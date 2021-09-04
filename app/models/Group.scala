@@ -13,8 +13,7 @@ import scala.util.Success
 
 
 case class Ability(action:String, subject:String)
-case class Group(_id: String, name: String, monitors:Seq[String], monitorTypes: Seq[String],
-                 admin:Boolean, abilities: Seq[Ability], parent:Option[String] = None)
+case class Group(_id: String, name: String, admin:Boolean, abilities: Seq[Ability])
 
 import javax.inject._
 object Group {
@@ -28,7 +27,7 @@ class GroupOp @Inject()(mongoDB: MongoDB) {
   import org.mongodb.scala._
 
   val ColName = "groups"
-  val codecRegistry = fromRegistries(fromProviders(classOf[Group], classOf[Ability], DEFAULT_CODEC_REGISTRY))
+  val codecRegistry = fromRegistries(fromProviders(classOf[Group], classOf[Ability]), DEFAULT_CODEC_REGISTRY)
   val collection: MongoCollection[Group] = mongoDB.database.withCodecRegistry(codecRegistry).getCollection(ColName)
 
   implicit val readAbility = Json.reads[Ability]
@@ -47,9 +46,9 @@ class GroupOp @Inject()(mongoDB: MongoDB) {
 
   val defaultGroup : Seq[Group] =
     Seq(
-      Group(_id = PLATFORM_ADMIN, "平台管理團隊", Seq.empty[String], Seq.empty[String],
+      Group(_id = PLATFORM_ADMIN, "平台管理團隊",
         true, Seq(Ability(ACTION_MANAGE, SUBJECT_ALL))),
-      Group(_id = PLATFORM_USER, "平台使用者", Seq.empty[String], Seq.empty[String],
+      Group(_id = PLATFORM_USER, "平台使用者",
         false, Seq(Ability(ACTION_READ, SUBJECT_DASHBOARD),
           Ability(ACTION_READ, SUBJECT_DATA),
           Ability(ACTION_SET, SUBJECT_ALARM)))

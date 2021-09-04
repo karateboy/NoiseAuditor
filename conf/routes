@@ -61,9 +61,6 @@ PUT      /WriteDO/:ids                                                          
 GET      /ExecuteSeq/:seq/:on                                                    controllers.HomeController.getExecuteSeq(seq:String, on:Boolean)
 
 
-GET      /InstrumentStatusReport/:id/:start/:end                                  controllers.Query.instrumentStatusReport(id, start:Long, end:Long)
-GET      /ManualAuditHistory/:start/:end                                          controllers.Query.manualAuditHistoryReport(start:Long, end:Long)
-
 #Data Management
 
 GET      /Recalculate/:monitors/:start/:end                                       controllers.HomeController.recalculateHour(monitors, start:Long, end:Long)
@@ -78,21 +75,7 @@ GET      /Excel/monitorReport/:reportType/:reportDate                           
 
 GET      /MonthlyHourReport/:monitorType/:reportDate                              controllers.Report.monthlyHourReport(monitorType, reportDate:Long, outputTypeStr="html")
 
-
-#JSON
-GET      /MonitorType                                                             controllers.HomeController.monitorTypeList
-POST     /MonitorType/:id                                                         controllers.HomeController.upsertMonitorType(id)
-PUT      /MonitorType/:id                                                         controllers.HomeController.upsertMonitorType(id)
-GET      /SignalTypes                                                             controllers.HomeController.signalTypeList
-GET      /SignalValues                                                            controllers.HomeController.signalValues
-
-GET      /Monitors                                                                controllers.HomeController.monitorList
-PUT      /Monitor/:id                                                             controllers.HomeController.upsertMonitor(id)
-DELETE   /Monitor/:id                                                             controllers.HomeController.deleteMonitor(id)
-
-
 GET      /Record/:monitorType/:start/:end                                         controllers.Query.recordList(monitorType, start:Long, end:Long)
-PUT      /Record/:tabType                                                         controllers.Query.updateRecord(tabType)
 
 GET      /HourRecord/:start/:end                                                  controllers.Query.hourRecordList(start:Long, end:Long)
 GET      /MinRecord/:start/:end                                                   controllers.Query.minRecordList(start:Long, end:Long)
@@ -100,7 +83,3 @@ GET      /AlertRecord/:start/end                                                
 	
 	
 GET      /EvtOptHigh                                                              controllers.HomeController.testEvtOptHigh
-
-#GET		/WindRose				controllers.Query.windRose
-#GET		/MonitorTypeRose		controllers.Query.monitorTypeRose
-#GET		/WindRoseReport/:monitor/:monitorType/:nWays/:start/:end	controllers.Query.windRoseReport(monitor, monitorType, nWays:Int, start, end)

@@ -439,24 +439,6 @@ class HomeController @Inject()(environment: play.api.Environment, recordOp: Reco
     Ok(s"Execute $seq")
   }
 
-  def monitorList = Security.Authenticated {
-    implicit request =>
-      val userInfo = Security.getUserinfo(request).get
-      val group = groupOp.getGroupByID(userInfo.group).get
-
-      implicit val writes = Json.writes[Monitor]
-
-      if (userInfo.isAdmin) {
-        val mList2 = monitorOp.mvList map { m => monitorOp.map(m) }
-        Ok(Json.toJson(mList2))
-      } else {
-        val mList2 =
-          for(m <-group.monitors if monitorOp.map.contains(m)) yield
-            monitorOp.map(m)
-
-        Ok(Json.toJson(mList2))
-      }
-  }
 
   def upsertMonitor(id: String) = Security.Authenticated(BodyParsers.parse.json) {
     implicit request =>
@@ -478,21 +460,6 @@ class HomeController @Inject()(environment: play.api.Environment, recordOp: Reco
       Ok(Json.obj("ok" -> (ret.getDeletedCount != 0)))
   }
 
-  def monitorTypeList = Security.Authenticated {
-    implicit request =>
-      val userInfo = Security.getUserinfo(request).get
-      val group = groupOp.getGroupByID(userInfo.group).get
-
-      val mtList = if (userInfo.isAdmin)
-        monitorTypeOp.mtvList map monitorTypeOp.map
-      else {
-        group.monitorTypes map monitorTypeOp.map
-        //val pm25 = monitorTypeOp.mtvList.filter(p => p == "PM25")
-        //pm25 map monitorTypeOp.map
-      }
-
-      Ok(Json.toJson(mtList))
-  }
 
   def upsertMonitorType(id: String) = Security.Authenticated(BodyParsers.parse.json) {
     implicit request =>

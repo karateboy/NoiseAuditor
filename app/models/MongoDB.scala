@@ -13,7 +13,8 @@ class MongoDB @Inject() (config: Configuration){
   val mongoClient: MongoClient = MongoClient(url.get)
   val database: MongoDatabase = mongoClient.getDatabase(dbName.get);
 
-  
+  def getAuditDb(dbName:String) = mongoClient.getDatabase(dbName)
+
   def cleanup={
     mongoClient.close()
   }

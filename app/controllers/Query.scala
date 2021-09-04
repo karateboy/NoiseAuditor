@@ -51,7 +51,7 @@ case class UpdateRecordParam(time: Long, mt: String, status: String)
 @Singleton
 class Query @Inject()(recordOp: RecordOp, monitorTypeOp: MonitorTypeOp, monitorOp: MonitorOp,
                       instrumentStatusOp: InstrumentStatusOp, instrumentOp: InstrumentOp,
-                      alarmOp: AlarmOp, manualAuditLogOp: ManualAuditLogOp, excelUtility: ExcelUtility) extends Controller {
+                      alarmOp: AlarmOp, excelUtility: ExcelUtility) extends Controller {
 
   implicit val cdWrite = Json.writes[CellData]
   implicit val rdWrite = Json.writes[RowData]
@@ -622,44 +622,6 @@ class Query @Inject()(recordOp: RecordOp, monitorTypeOp: MonitorTypeOp, monitorO
 
     val recordMap = recordOp.getRecordMap(recordOp.HourCollection)(Monitor.SELF_ID, List(monitorType), start, end)
     Ok(Json.toJson(recordMap(monitorType)))
-  }
-
-  def updateRecord(tabTypeStr: String) = Security.Authenticated(BodyParsers.parse.json) {
-    implicit request =>
-      val user = request.user
-      implicit val read = Json.reads[UpdateRecordParam]
-      implicit val maParamRead = Json.reads[ManualAuditParam]
-      val result = request.body.validate[ManualAuditParam]
-      val tabType = TableType.withName(tabTypeStr)
-      result.fold(
-        err => {
-          Logger.error(JsError.toJson(err).toString())
-          BadRequest(Json.obj("ok" -> false, "msg" -> JsError.toJson(err).toString()))
-        },
-        maParam => {
-          for (param <- maParam.updateList) {
-            recordOp.updateRecordStatus(param.time, param.mt, param.status)(TableType.mapCollection(tabType))
-            val log = ManualAuditLog(new DateTime(param.time), mt = param.mt, modifiedTime = DateTime.now(),
-              operator = user.name, changedStatus = param.status, reason = maParam.reason)
-            manualAuditLogOp.upsertLog(log)
-          }
-        })
-      Ok(Json.obj("ok" -> true))
-  }
-
-  def manualAuditHistoryReport(start: Long, end: Long) = Security.Authenticated.async {
-    val startTime = new DateTime(start)
-    val endTime = new DateTime(end)
-    implicit val w = Json.writes[ManualAuditLog2]
-    val logFuture = manualAuditLogOp.queryLog2(startTime, endTime)
-    val resultF =
-      for {
-        logList <- logFuture
-      } yield {
-        Ok(Json.toJson(logList))
-      }
-
-    resultF
   }
 
   // FIXME Bypass security check
