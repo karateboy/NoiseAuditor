@@ -1,0 +1,106 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+# Home page
+GET      /                                                                     controllers.Assets.at(path="/public/dist", file="index.html")
+GET      /dist/                                                                controllers.Assets.at(path="/public/dist", file="index.html")
+# Map static resources from the /public folder to the /assets URL path
+GET      /static/*file                                                         controllers.Assets.versioned(path="/public/static", file: Asset)
+GET      /html/*file                                                           controllers.Assets.at(path="/public/html", file)
+GET      /dist/*file                                                           controllers.Assets.at(path="/public/dist", file)
+
+
+GET      /logout                                                                  controllers.Login.logout
+POST     /login                                                                   controllers.Login.authenticate
+GET      /login                                                                   controllers.Login.isLogin
+
+POST     /User                                                                    controllers.HomeController.newUser
+GET      /User                                                                    controllers.HomeController.getAllUsers
+PUT      /User/:id                                                                controllers.HomeController.updateUser(id)
+DELETE   /User/:id                                                                controllers.HomeController.deleteUser(id)
+GET      /User/:id                                                                controllers.HomeController.getUser(id)
+
+POST     /Group                                                                   controllers.HomeController.newGroup
+GET      /Groups                                                                  controllers.HomeController.getAllGroups
+PUT      /Group/:id                                                               controllers.HomeController.updateGroup(id)
+DELETE   /Group/:id                                                               controllers.HomeController.deleteGroup(id)
+
+GET      /HistoryTrend/:monitor/:monitorType/:reportUnit/:statusFilter/:start/:end         controllers.Query.historyTrendChart(monitor, monitorType, reportUnit, statusFilter, start:Long, end:Long, outputTypeStr="html")
+GET      /HistoryTrend/excel/:monitorType/:reportUnit/:statusFilter/:start/:end            controllers.Query.historyTrendChart(monitor, monitorType, reportUnit, statusFilter, start:Long, end:Long, outputTypeStr="excel")
+
+GET      /HistoryReport/:monitor/:monitorType/:tabType/:start/:end                controllers.Query.historyData(monitor, monitorType, tabType, start: Long, end: Long)
+GET      /LatestData/:monitor/:monitorType/:tabType                               controllers.Query.latestData(monitor, monitorType, tabType)
+GET      /RealtimeStatus                                                          controllers.Query.realtimeStatus()
+
+GET      /AlarmReport/:level/:start/:end                                          controllers.Query.alarmReport(level:Int, start:Long, end:Long)
+
+POST     /SaveMonitorTypeConfig                                                   controllers.HomeController.saveMonitorTypeConfig
+
+GET      /InstrumentTypes                                                         controllers.HomeController.getInstrumentTypes
+GET      /InstrumentType/:id                                                      controllers.HomeController.getInstrumentType(id)
+
+
+GET      /InstrumentInfos                                                         controllers.HomeController.getInstrumentInfoList()
+POST     /Instrument                                                              controllers.HomeController.newInstrument
+GET      /Instruments                                                             controllers.HomeController.getInstrumentList
+GET      /Instruments/DO                                                          controllers.HomeController.getDoInstrumentList
+GET      /Instrument/:id                                                          controllers.HomeController.getInstrument(id)
+DELETE   /Instrument/:ids                                                         controllers.HomeController.removeInstrument(ids)
+
+
+
+PUT      /DeactivateInstrument/:ids                                               controllers.HomeController.deactivateInstrument(ids)
+PUT      /ActivateInstrument/:ids                                                 controllers.HomeController.activateInstrument(ids)
+PUT      /ToggleMaintainInstrument/:ids                                           controllers.HomeController.toggleMaintainInstrument(ids)
+PUT      /CalibrateInstrumentZero/:ids                                            controllers.HomeController.calibrateInstrument(ids, zeroCalibration="true")
+PUT      /CalibrateInstrumentSpan/:ids                                            controllers.HomeController.calibrateInstrument(ids, zeroCalibration="false")
+PUT      /CalibrateInstrument/:ids                                                controllers.HomeController.calibrateInstrumentFull(ids)
+PUT      /ResetInstrument/:ids                                                    controllers.HomeController.resetInstrument(ids)
+PUT      /WriteDO/:ids                                                            controllers.HomeController.writeDO(ids)
+GET      /ExecuteSeq/:seq/:on                                                    controllers.HomeController.getExecuteSeq(seq:String, on:Boolean)
+
+
+GET      /InstrumentStatusReport/:id/:start/:end                                  controllers.Query.instrumentStatusReport(id, start:Long, end:Long)
+GET      /ManualAuditHistory/:start/:end                                          controllers.Query.manualAuditHistoryReport(start:Long, end:Long)
+
+#Data Management
+
+GET      /Recalculate/:monitors/:start/:end                                       controllers.HomeController.recalculateHour(monitors, start:Long, end:Long)
+
+#Realtime
+GET      /MonitorTypeStatusList                                                   controllers.Realtime.MonitorTypeStatusList()
+
+#Report
+GET      /monitorReport/:reportType/:reportDate                                   controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="html")
+GET      /PDF/monitorReport/:reportType/:reportDate                               controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="pdf")
+GET      /Excel/monitorReport/:reportType/:reportDate                             controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="excel")
+
+GET      /MonthlyHourReport/:monitorType/:reportDate                              controllers.Report.monthlyHourReport(monitorType, reportDate:Long, outputTypeStr="html")
+
+
+#JSON
+GET      /MonitorType                                                             controllers.HomeController.monitorTypeList
+POST     /MonitorType/:id                                                         controllers.HomeController.upsertMonitorType(id)
+PUT      /MonitorType/:id                                                         controllers.HomeController.upsertMonitorType(id)
+GET      /SignalTypes                                                             controllers.HomeController.signalTypeList
+GET      /SignalValues                                                            controllers.HomeController.signalValues
+
+GET      /Monitors                                                                controllers.HomeController.monitorList
+PUT      /Monitor/:id                                                             controllers.HomeController.upsertMonitor(id)
+DELETE   /Monitor/:id                                                             controllers.HomeController.deleteMonitor(id)
+
+
+GET      /Record/:monitorType/:start/:end                                         controllers.Query.recordList(monitorType, start:Long, end:Long)
+PUT      /Record/:tabType                                                         controllers.Query.updateRecord(tabType)
+
+GET      /HourRecord/:start/:end                                                  controllers.Query.hourRecordList(start:Long, end:Long)
+GET      /MinRecord/:start/:end                                                   controllers.Query.minRecordList(start:Long, end:Long)
+GET      /AlertRecord/:start/end                                                  controllers.Query.alertRecordList(start:Long, end:Long)
+	
+	
+GET      /EvtOptHigh                                                              controllers.HomeController.testEvtOptHigh
+
+#GET		/WindRose				controllers.Query.windRose
+#GET		/MonitorTypeRose		controllers.Query.monitorTypeRose
+#GET		/WindRoseReport/:monitor/:monitorType/:nWays/:start/:end	controllers.Query.windRoseReport(monitor, monitorType, nWays:Int, start, end)
