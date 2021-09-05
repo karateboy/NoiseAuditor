@@ -18,7 +18,7 @@ class Module extends AbstractModule with AkkaGuiceSupport {
     bind(classOf[MongoDB])
     bind(classOf[MonitorTypeOp])
 
-    bindActor[DataCollectManager]("dataCollectManager")
+    // bindActor[DataCollectManager]("dataCollectManager")
 
     //bind(classOf[ForwardManager])
     // Use the system clock as the default implementation of Clock

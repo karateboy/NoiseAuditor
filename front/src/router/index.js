@@ -13,15 +13,12 @@ const router = new VueRouter({
     {
       path: '/',
       name: 'home',
-      component: () => import('@/views/SecondPage.vue'),
-      meta: {
-        pageTitle: '儀表板',
-      },
+      redirect: { name: 'airport-config' },
     },
     {
       path: '/upload',
       name: 'upload',
-      component: () => import('@/views/SecondPage.vue'),
+      component: () => import('@/views/ReportUpload.vue'),
       meta: {
         pageTitle: '檔案上傳',
       },
@@ -45,7 +42,7 @@ const router = new VueRouter({
     {
       path: '/airport-config',
       name: 'airport-config',
-      component: () => import('@/views/SecondPage.vue'),
+      component: () => import('@/views/AirportConfig.vue'),
       meta: {
         pageTitle: '機場清單設定',
       },

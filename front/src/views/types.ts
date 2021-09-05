@@ -89,3 +89,24 @@ export interface CalibrationConfig {
 export interface ThetaConfig {
   calibrations: Array<CalibrationConfig>;
 }
+
+export interface Airport {
+  _id: number;
+  name: string;
+}
+
+export interface Terminal {
+  no: number;
+  name: string;
+}
+
+export interface AirportInfoID {
+  year: number;
+  quarter: number;
+  airportID: number;
+}
+
+export interface AirportInfo {
+  _id: AirportInfoID;
+  terminals: Array<Terminal>;
+}

@@ -18,8 +18,9 @@ import App from './App.vue';
 import { ValidationProvider } from 'vee-validate';
 import vSelect from 'vue-select';
 
-// Global Components
-import './global-components';
+import FeatherIcon from '@core/components/feather-icon/FeatherIcon.vue';
+
+Vue.component(FeatherIcon.name, FeatherIcon);
 
 // 3rd party plugins
 import '@/libs/acl';

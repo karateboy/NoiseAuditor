@@ -6,17 +6,15 @@ import javax.inject.{Inject, Singleton}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-case class Terminal(no:Int, name:String)
-case class ReportID(year:Int, quarter:Int, airpotID:Int, version:Int)
-case class AirportInfo(_id:Int, terminals: Seq[Terminal])
-case class ReportInfo(_id:ReportID, year: Int, quarter:Int, airportInfo:AirportInfo, version:Int,
+case class ReportID(airpotInfoID:AirportInfoID, version:Int)
+case class ReportInfo(_id:ReportID, year: Int, quarter:Int, airportInfo:AirportInfo, version:Int = 0,
                       state:String = "未進行"){
-  def getCollectionName = s"Y${year}Q${quarter}airport${airportInfo._id}v${version}"
+  def getCollectionName = s"Y${year}Q${quarter}airport${airportInfo._id.airportID}v${version}"
 }
 
 object ReportInfo{
-  def apply(year: Int, quarter:Int, airportInfo: AirportInfo, version:Int): ReportInfo =
-    ReportInfo(ReportID(year, quarter, airportInfo._id, version), year, quarter, airportInfo, version)
+  def apply(airportInfo: AirportInfo, version:Int): ReportInfo =
+    ReportInfo(ReportID(airportInfo._id, version), airportInfo._id.year, airportInfo._id.quarter, airportInfo, version)
 }
 
 @Singleton
@@ -29,7 +27,7 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
 
   val ColName = "reportInfos"
   val codecRegistry = fromRegistries(fromProviders(classOf[ReportInfo],
-    classOf[ReportID], classOf[Airport], classOf[Terminal]), DEFAULT_CODEC_REGISTRY)
+    classOf[ReportID], classOf[AirportInfoID], classOf[AirportInfo], classOf[Terminal]), DEFAULT_CODEC_REGISTRY)
   val collection: MongoCollection[ReportInfo] = mongoDB.database.withCodecRegistry(codecRegistry).getCollection(ColName)
 
   collection.createIndex(Indexes.ascending("airportInfo._id", "year", "quarter"), IndexOptions().unique(true))

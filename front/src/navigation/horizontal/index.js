@@ -1,9 +1,4 @@
 export default [
-  {
-    title: '儀錶板',
-    icon: 'ActivityIcon',
-    route: 'home',
-  },
   //檔案上傳
   {
     title: '檔案上傳',
@@ -24,6 +19,11 @@ export default [
     title: '機場清單設定',
     icon: 'ListIcon',
     route: 'airport-config',
+  },
+  {
+    title: '報告匯出',
+    icon: 'DownloadIcon',
+    route: 'export-report',
   },
   {
     title: '系統管理',

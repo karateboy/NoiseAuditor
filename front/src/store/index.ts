@@ -5,8 +5,6 @@ import Vuex, { StoreOptions } from 'vuex';
 import app from './app';
 import appConfig from './app-config';
 import verticalMenu from './vertical-menu';
-import monitorTypes from './monitorTypes';
-import { monitors } from './monitors';
 import user from './user';
 import { RootState } from './types';
 
@@ -32,8 +30,6 @@ const store: StoreOptions<RootState> = {
     app,
     appConfig,
     verticalMenu,
-    monitorTypes,
-    monitors,
     user,
   },
   strict: process.env.DEV,
