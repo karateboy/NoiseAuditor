@@ -1,20 +1,30 @@
 package models
 
 import models.ModelHelper.errorHandler
+import org.joda.time.DateTime
+import play.api.Logger
 
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.util.{Failure, Success}
 
 case class ReportID(airpotInfoID:AirportInfoID, version:Int)
-case class ReportInfo(_id:ReportID, year: Int, quarter:Int, airportInfo:AirportInfo, version:Int = 0,
-                      state:String = "未進行"){
-  def getCollectionName = s"Y${year}Q${quarter}airport${airportInfo._id.airportID}v${version}"
+case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
+                      var state:String = "上傳檔案中", var importLog:String = "", var auditLog:String=""){
+  def getCollectionName = s"Y${year}Q${quarter}airport${_id.airpotInfoID.airportID}v${_id.version}"
+  def appendImportLog(message:String): Unit = {
+    importLog = importLog + s"${DateTime.now().toString} - $message\n"
+  }
+
+  def appendAuditLog(message:String): Unit ={
+    auditLog = auditLog + s"${DateTime.now().toString} - $message\n"
+  }
 }
 
 object ReportInfo{
-  def apply(airportInfo: AirportInfo, version:Int): ReportInfo =
-    ReportInfo(ReportID(airportInfo._id, version), airportInfo._id.year, airportInfo._id.quarter, airportInfo, version)
+  def apply(airportInfoID: AirportInfoID, version:Int): ReportInfo =
+    ReportInfo(ReportID(airportInfoID, version), airportInfoID.year, airportInfoID.quarter, version)
 }
 
 @Singleton
@@ -32,8 +42,24 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
 
   collection.createIndex(Indexes.ascending("airportInfo._id", "year", "quarter"), IndexOptions().unique(true))
 
-  def getReportInfoList(airportID:Int): Future[Seq[ReportInfo]] ={
-    val f = collection.find(Filters.equal("airportID", airportID)).toFuture()
+  def init(): Unit = {
+    for(colNames <- mongoDB.database.listCollectionNames().toFuture()) {
+      if (!colNames.contains(ColName)) {
+        val f = mongoDB.database.createCollection(ColName).toFuture()
+        f.onFailure(errorHandler)
+        f onComplete({
+          case Success(_) =>
+          case Failure(ex)=>
+            Logger.error(s"failed to init $ColName collection", ex)
+        })
+      }
+    }
+  }
+
+  init
+
+  def getReportInfoList(airpotInfoID:AirportInfoID): Future[Seq[ReportInfo]] ={
+    val f = collection.find(Filters.equal("_id.airpotInfoID", airpotInfoID)).toFuture()
     f onFailure(errorHandler)
     f
   }
@@ -41,6 +67,12 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
   def upsertReportInfo(reportInfo: ReportInfo) = {
     val f = collection.replaceOne(Filters.equal("_id", reportInfo._id), reportInfo,
       ReplaceOptions().upsert(true)).toFuture()
+    f onFailure(errorHandler)
+    f
+  }
+
+  def updateState(reportID:ReportID, state:String)={
+    val f = collection.updateOne(Filters.equal("_id", reportID), Updates.set("state", state)).toFuture()
     f onFailure(errorHandler)
     f
   }

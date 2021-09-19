@@ -1,22 +1,22 @@
 package controllers
 
 import akka.actor.ActorSystem
-import com.github.nscala_time.time.Imports._
 import models._
+import org.apache.commons.io.file.PathUtils.createParentDirectories
 import play.api._
 import play.api.data.Forms._
 import play.api.data._
 import play.api.libs.json._
 import play.api.mvc._
 
-import java.nio.file.Files
+import java.nio.file.{Files, Paths}
 import javax.inject._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp,
+class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp, configuration: Configuration,
                                monitorTypeOp: MonitorTypeOp, groupOp: GroupOp, airportOp: AirportOp,
-                               airportInfoOp: AirportInfoOp, actorSystem: ActorSystem) extends Controller {
+                               airportInfoOp: AirportInfoOp, actorSystem: ActorSystem, reportInfoOp: ReportInfoOp) extends Controller {
 
   val title = "機場噪音稽核系統"
 
@@ -25,7 +25,6 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
   implicit val userParamRead: Reads[User] = Json.reads[User]
 
   import groupOp.{read, write}
-  import monitorTypeOp.{mtRead, mtWrite}
 
   def newUser = Security.Authenticated(BodyParsers.parse.json) {
     implicit request =>
@@ -137,18 +136,16 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
       }
   }
 
-  def getUser(id:String) = Security.Authenticated {
+  def getUser(id: String) = Security.Authenticated {
     implicit request =>
       implicit val write = Json.writes[User]
       val user = userOp.getUserByEmail(id)
       Ok(Json.toJson(user))
   }
 
-  case class EditData(id: String, data: String)
-
   def getAirportList() = Security.Authenticated.async {
     implicit val writes = Json.writes[Airport]
-    for(ret <- airportOp.getList()) yield {
+    for (ret <- airportOp.getList()) yield {
       Ok(Json.toJson(ret))
     }
   }
@@ -160,21 +157,21 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
 
       airportRet.fold(
         error => {
-          Future{
+          Future {
             Logger.error(JsError.toJson(error).toString())
             BadRequest(Json.obj("ok" -> false, "msg" -> JsError.toJson(error).toString()))
           }
         },
         airportInfo => {
-          for(ret <- airportInfoOp.upsert(airportInfo)) yield
+          for (ret <- airportInfoOp.upsert(airportInfo)) yield
             Ok(Json.obj("ok" -> ret.wasAcknowledged()))
         })
   }
 
-  def getLatestAirportInfo(airportID:Int, year:Int, quarter:Int)= Security.Authenticated.async {
+  def getLatestAirportInfo(airportID: Int, year: Int, quarter: Int) = Security.Authenticated.async {
     import airportInfoOp._
     val f = airportInfoOp.getLatest(airportID)
-    for(ret<-f) yield {
+    for (ret <- f) yield {
       if (ret.nonEmpty) {
         val airportInfo = ret(0)
         val matched = airportInfo._id.year == year && airportInfo._id.quarter == quarter
@@ -184,35 +181,48 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
     }
   }
 
-    def getAirportInfo(airportID:Int, year:Int, quarter:Int)= Security.Authenticated.async {
-      import airportInfoOp._
-      val f = airportInfoOp.get(airportID, year, quarter)
-      for (ret <- f) yield {
-        if (ret.nonEmpty) {
-          val airportInfo = ret(0)
-          val matched = airportInfo._id.year == year && airportInfo._id.quarter == quarter
-          Ok(Json.obj("ok" -> matched, "result" -> Json.toJson(ret(0))))
-        } else
-          Ok(Json.obj("ok" -> false))
-      }
+  def getAirportInfo(airportID: Int, year: Int, quarter: Int) = Security.Authenticated.async {
+    import airportInfoOp._
+    val f = airportInfoOp.get(airportID, year, quarter)
+    for (ret <- f) yield {
+      if (ret.nonEmpty) {
+        val airportInfo = ret(0)
+        val matched = airportInfo._id.year == year && airportInfo._id.quarter == quarter
+        Ok(Json.obj("ok" -> matched, "result" -> Json.toJson(ret(0))))
+      } else
+        Ok(Json.obj("ok" -> false))
     }
-  def uploadeReport(airportID:Int, year:Int, quarter:Int)= Security.Authenticated(parse.multipartFormData) {
+  }
+
+  def uploadeReport(airportID: Int, year: Int, quarter: Int) = Security.Authenticated.async(parse.multipartFormData) {
     implicit request =>
       val dataFileOpt = request.body.file("data")
       if (dataFileOpt.isEmpty) {
-        Logger.info("data is empty..")
-        Ok(Json.obj("ok" -> true))
+        Future{
+          Logger.info("data is empty..")
+          Ok(Json.obj("ok" -> true))
+        }
       } else {
+        val config: Configuration = configuration.getConfig("auditor").get
+        val downloadFolder = config.getString("downloadFolder").get
         val dataFile = dataFileOpt.get
-        val filePath = Files.createTempFile(s"${year}Y${quarter}airport${airportID}", ".zip")
-        val file = dataFile.ref.moveTo(filePath.toFile, true)
-
-        val actorName = ReportImporter.start(dataFile = file)(actorSystem)
-        Ok(Json.obj("actorName" -> actorName))
+        val airportInfoID = AirportInfoID(year, quarter, airportID)
+        for(reportInfoList <- reportInfoOp.getReportInfoList(airportInfoID)) yield {
+          val ver = reportInfoList.size + 1
+          val targetFilePath = Paths.get(s"${downloadFolder}/${year}Y${quarter}Q_airport${airportID}v${ver}/download.zip")
+          createParentDirectories(targetFilePath)
+          val file = dataFile.ref.moveTo(targetFilePath.toFile, true)
+          val reportInfo = ReportInfo(airportInfoID = airportInfoID, version = ver)
+          reportInfoOp.upsertReportInfo(reportInfo)
+          val actorName = ReportImporter.start(dataFile = file, reportInfo= reportInfo, reportInfoOp)(actorSystem)
+          Ok(Json.obj("actorName" -> actorName))
+        }
       }
   }
 
   def getUploadProgress(actorName: String) = Security.Authenticated {
     Ok(Json.obj("finished" -> ReportImporter.isFinished(actorName)))
   }
+
+  case class EditData(id: String, data: String)
 }

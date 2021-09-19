@@ -1,6 +1,6 @@
 name := """NoiseAuditor"""
 
-version := "1.0.0"
+version := "1.1.0"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala, LauncherJarPlugin)
 
@@ -21,6 +21,8 @@ libraryDependencies += "com.github.nscala-time" %% "nscala-time" % "2.26.0"
 // https://mvnrepository.com/artifact/org.apache.poi/poi-ooxml
 libraryDependencies += "org.apache.poi" % "poi-ooxml" % "5.0.0"
 
+// https://mvnrepository.com/artifact/commons-io/commons-io
+libraryDependencies += "commons-io" % "commons-io" % "2.11.0"
 
 routesGenerator := StaticRoutesGenerator
 
