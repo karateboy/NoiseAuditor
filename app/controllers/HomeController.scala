@@ -9,14 +9,15 @@ import play.api.data._
 import play.api.libs.json._
 import play.api.mvc._
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.Paths
 import javax.inject._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp, configuration: Configuration,
                                monitorTypeOp: MonitorTypeOp, groupOp: GroupOp, airportOp: AirportOp,
-                               airportInfoOp: AirportInfoOp, actorSystem: ActorSystem, reportInfoOp: ReportInfoOp) extends Controller {
+                               airportInfoOp: AirportInfoOp, actorSystem: ActorSystem, reportInfoOp: ReportInfoOp,
+                               mongoDB: MongoDB) extends Controller {
 
   val title = "機場噪音稽核系統"
 
@@ -198,7 +199,7 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
     implicit request =>
       val dataFileOpt = request.body.file("data")
       if (dataFileOpt.isEmpty) {
-        Future{
+        Future {
           Logger.info("data is empty..")
           Ok(Json.obj("ok" -> true))
         }
@@ -207,14 +208,18 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
         val downloadFolder = config.getString("downloadFolder").get
         val dataFile = dataFileOpt.get
         val airportInfoID = AirportInfoID(year, quarter, airportID)
-        for(reportInfoList <- reportInfoOp.getReportInfoList(airportInfoID)) yield {
-          val ver = reportInfoList.size + 1
+        for (reportInfoList <- reportInfoOp.getReportInfoList(airportInfoID)) yield {
+          val ver = if (reportInfoList.isEmpty)
+            1
+          else
+            reportInfoList.map(_.version).max + 1
           val targetFilePath = Paths.get(s"${downloadFolder}/${year}Y${quarter}Q_airport${airportID}v${ver}/download.zip")
           createParentDirectories(targetFilePath)
           val file = dataFile.ref.moveTo(targetFilePath.toFile, true)
           val reportInfo = ReportInfo(airportInfoID = airportInfoID, version = ver)
           reportInfoOp.upsertReportInfo(reportInfo)
-          val actorName = ReportImporter.start(dataFile = file, reportInfo= reportInfo, reportInfoOp)(actorSystem)
+          val actorName = ReportImporter.start(dataFile = file, reportInfo = reportInfo,
+            reportInfoOp, ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB))(actorSystem)
           Ok(Json.obj("actorName" -> actorName))
         }
       }

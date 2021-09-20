@@ -24,6 +24,9 @@ libraryDependencies += "org.apache.poi" % "poi-ooxml" % "5.0.0"
 // https://mvnrepository.com/artifact/commons-io/commons-io
 libraryDependencies += "commons-io" % "commons-io" % "2.11.0"
 
+// https://mvnrepository.com/artifact/com.github.albfernandez/javadbf
+libraryDependencies += "com.github.albfernandez" % "javadbf" % "1.13.2"
+
 routesGenerator := StaticRoutesGenerator
 
 mappings in Universal ++=

@@ -12,13 +12,22 @@ import scala.util.{Failure, Success}
 case class ReportID(airpotInfoID:AirportInfoID, version:Int)
 case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
                       var state:String = "上傳檔案中", var importLog:String = "", var auditLog:String=""){
-  def getCollectionName = s"Y${year}Q${quarter}airport${_id.airpotInfoID.airportID}v${_id.version}"
+  val getCollectionName = s"Y${year}Q${quarter}airport${_id.airpotInfoID.airportID}v${_id.version}"
   def appendImportLog(message:String): Unit = {
     importLog = importLog + s"${DateTime.now().toString} - $message\n"
   }
 
   def appendAuditLog(message:String): Unit ={
     auditLog = auditLog + s"${DateTime.now().toString} - $message\n"
+  }
+
+  def removeCollection(mongoDB: MongoDB) = {
+    for(nameList <- mongoDB.database.listCollectionNames().toFuture()){
+      for(name <-nameList){
+        if(name.startsWith(getCollectionName))
+          mongoDB.database.getCollection(name).drop().toFuture()
+      }
+    }
   }
 }
 
@@ -76,4 +85,12 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
     f onFailure(errorHandler)
     f
   }
+
+  def clear()={
+    val f = collection.find(Filters.exists("_id")).toFuture()
+    for(ret<-f){
+      ret map {r => r.removeCollection(mongoDB)}
+    }
+  }
+  clear()
 }

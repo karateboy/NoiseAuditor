@@ -255,19 +255,4 @@ class RecordOp @Inject()(mongoDB: MongoDB, monitorTypeOp: MonitorTypeOp, monitor
     col.find(equal("monitor", monitor))
       .sort(descending("time")).limit(1).toFuture()
   }
-
-  /*
-  def updateMtRecord(colName: String)(mtName: String, updateList: Seq[(DateTime, Double)], monitor: String = monitorOp.SELF_ID) = {
-    import org.mongodb.scala.bson._
-    import org.mongodb.scala.model._
-    val col = getCollection(colName)
-    val seqF =
-      for (update <- updateList) yield {
-        val btime: BsonDateTime = update._1
-        col.updateOne(and(equal("time", btime)), and(Updates.set(mtName + ".v", update._2), Updates.setOnInsert(mtName + ".s", "010")), UpdateOptions().upsert(true)).toFuture()
-      }
-
-    import scala.concurrent._
-    Future.sequence(seqF)
-  } */
 }
