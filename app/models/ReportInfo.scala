@@ -5,13 +5,19 @@ import org.joda.time.DateTime
 import play.api.Logger
 
 import javax.inject.{Inject, Singleton}
+import scala.collection.script.Update
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
+import org.mongodb.scala.model._
 
+case class SubTask(name:String, var current:Int, total:Int)
 case class ReportID(airpotInfoID:AirportInfoID, version:Int)
 case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
-                      var state:String = "上傳檔案中", var importLog:String = "", var auditLog:String=""){
+                      var state:String = "上傳檔案中",
+                      var importLog:String = "",
+                      var auditLog:String="",
+                      tasks: Seq[SubTask] = Seq.empty[SubTask]){
   val getCollectionName = s"Y${year}Q${quarter}airport${_id.airpotInfoID.airportID}v${_id.version}"
   def appendImportLog(message:String): Unit = {
     importLog = importLog + s"${DateTime.now().toString} - $message\n"
@@ -29,6 +35,7 @@ case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
       }
     }
   }
+
 }
 
 object ReportInfo{
@@ -46,7 +53,7 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
 
   val ColName = "reportInfos"
   val codecRegistry = fromRegistries(fromProviders(classOf[ReportInfo],
-    classOf[ReportID], classOf[AirportInfoID], classOf[AirportInfo], classOf[Terminal]), DEFAULT_CODEC_REGISTRY)
+    classOf[ReportID], classOf[AirportInfoID], classOf[AirportInfo], classOf[Terminal], classOf[SubTask]), DEFAULT_CODEC_REGISTRY)
   val collection: MongoCollection[ReportInfo] = mongoDB.database.withCodecRegistry(codecRegistry).getCollection(ColName)
 
   collection.createIndex(Indexes.ascending("airportInfo._id", "year", "quarter"), IndexOptions().unique(true))
@@ -93,4 +100,26 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
     }
   }
   clear()
+
+  def addSubTask(_id:ReportID, task:SubTask) = {
+    val updates = Updates.addToSet("tasks", task)
+    val f = collection.updateOne(Filters.equal("_id", _id), updates).toFuture()
+    f onFailure(errorHandler())
+    f
+  }
+
+  def updateSubTask(_id:ReportID, task:SubTask) = {
+    val filter = Filters.and(Filters.equal("_id", _id),
+      Filters.equal("tasks.name", task.name))
+    val update = Updates.set("tasks.$.current", task.current)
+    val f = collection.updateOne(filter, update).toFuture()
+    f onFailure(errorHandler())
+    f
+  }
+
+  def get(_id:ReportID): Future[Seq[ReportInfo]] ={
+    val f = collection.find(Filters.equal("_id", _id)).toFuture()
+    f onFailure(errorHandler())
+    f
+  }
 }

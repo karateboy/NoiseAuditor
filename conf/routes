@@ -59,3 +59,4 @@ GET     /AirportInfo/:airportID/:year/:quarter                       controllers
 #Report
 POST    /ReportData/:airportID/:year/:quarter                        controllers.HomeController.uploadeReport(airportID:Int, year:Int, quarter:Int)
 GET     /UploadProgress/:actorName                                   controllers.HomeController.getUploadProgress(actorName)
+GET     /ReportInfo/:year/:quarter/:airportID/:version               controllers.HomeController.getReportInfo(year:Int, quarter:Int, airportID:Int, version:Int)

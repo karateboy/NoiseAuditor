@@ -34,7 +34,7 @@ const router = new VueRouter({
     {
       path: '/import-progress',
       name: 'import-progress',
-      component: () => import('@/views/SecondPage.vue'),
+      component: () => import('@/views/ReportInfo.vue'),
       meta: {
         pageTitle: '資料匯入進度',
       },

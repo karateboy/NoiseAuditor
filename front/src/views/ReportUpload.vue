@@ -84,6 +84,7 @@ import moment from 'moment';
 import Swal from 'sweetalert2';
 import { Airport, Terminal, AirportInfo } from './types';
 import { mapMutations } from 'vuex';
+import { ReportID } from '@/store/types';
 
 export default Vue.extend({
   data() {
@@ -104,6 +105,7 @@ export default Vue.extend({
       airportInfoReady: false,
       uploadFile,
       actorName: '',
+      version: 0,
       timer: 0,
     };
   },
@@ -142,7 +144,7 @@ export default Vue.extend({
     this.getAirportList();
   },
   methods: {
-    ...mapMutations(['setLoading']),
+    ...mapMutations(['setLoading', 'setActiveReportIDs']),
     async getAirportList() {
       try {
         const res = await axios.get('/Airports');
@@ -191,7 +193,8 @@ export default Vue.extend({
         );
         if (res.status === 200) {
           this.actorName = res.data.actorName;
-          this.setLoading({ loading: true, message: '資料庫匯入中' });
+          this.version = res.data.version;
+          this.setLoading({ loading: true, message: '檔案解壓縮中' });
           this.timer = setTimeout(this.checkFinished, 1000);
         } else {
           this.setLoading({ loading: false });
@@ -216,6 +219,16 @@ export default Vue.extend({
           icon: 'success',
           confirmButtonText: '確定',
         });
+        const reportID: ReportID = {
+          airpotInfoID: {
+            year: this.form._id.year,
+            quarter: this.form._id.quarter,
+            airportID: this.form._id.airportID,
+          },
+          version: this.version,
+        };
+        this.setActiveReportIDs([reportID]);
+        this.$router.push({ name: 'import-progress' });
       } else {
         this.timer = setTimeout(this.checkFinished, 1000);
       }

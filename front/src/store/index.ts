@@ -6,7 +6,7 @@ import app from './app';
 import appConfig from './app-config';
 import verticalMenu from './vertical-menu';
 import user from './user';
-import { RootState } from './types';
+import { ReportID, RootState } from './types';
 
 Vue.use(Vuex);
 
@@ -15,6 +15,7 @@ const store: StoreOptions<RootState> = {
     isLoading: false,
     loadingMessage: '...',
     login: false,
+    activeReportIDs: Array<ReportID>(),
   },
   mutations: {
     setLoading(state, param) {
@@ -24,6 +25,9 @@ const store: StoreOptions<RootState> = {
     },
     setLogin(state, login) {
       state.login = login;
+    },
+    setActiveReportIDs(state, param: Array<ReportID>) {
+      state.activeReportIDs = param;
     },
   },
   modules: {

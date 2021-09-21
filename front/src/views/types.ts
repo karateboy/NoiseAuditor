@@ -1,4 +1,6 @@
 /* eslint-disable camelcase */
+import { ReportID } from '@/store/types';
+
 export interface Sensor {
   id: string;
   topic: string;
@@ -109,4 +111,21 @@ export interface AirportInfoID {
 export interface AirportInfo {
   _id: AirportInfoID;
   terminals: Array<Terminal>;
+}
+
+export interface SubTask {
+  name: string;
+  current: number;
+  total: number;
+}
+
+export interface ReportInfo {
+  _id: ReportID;
+  year: number;
+  quarter: number;
+  version: number;
+  state: string;
+  importLog: string;
+  auditLog: string;
+  tasks: Array<SubTask>;
 }

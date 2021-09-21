@@ -220,13 +220,23 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
           reportInfoOp.upsertReportInfo(reportInfo)
           val actorName = ReportImporter.start(dataFile = file, reportInfo = reportInfo,
             reportInfoOp, ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB))(actorSystem)
-          Ok(Json.obj("actorName" -> actorName))
+          Ok(Json.obj("actorName" -> actorName, "version"->ver))
         }
       }
   }
 
   def getUploadProgress(actorName: String) = Security.Authenticated {
     Ok(Json.obj("finished" -> ReportImporter.isFinished(actorName)))
+  }
+
+  def getReportInfo(year:Int, quarter:Int, airportID:Int, version:Int) = Security.Authenticated.async {
+    val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
+    implicit val write1 = Json.writes[SubTask]
+    implicit val write3 = Json.writes[AirportInfoID]
+    implicit val write2 = Json.writes[ReportID]
+    implicit val write = Json.writes[ReportInfo]
+    for(ret<- reportInfoOp.get(reportID)) yield
+      Ok(Json.toJson((ret)))
   }
 
   case class EditData(id: String, data: String)
