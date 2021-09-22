@@ -66,14 +66,14 @@ case class NoiseRecord(_id: RecordID, activity: Int, totalEvent: Double, totalLe
                        totalLdn: Double, eventLdn: Double, backLdn: Double, l5: Double, l10: Double, l50: Double,
                        l90: Double, l95: Double, l99: Double, numEvent: Int, duration: Int)
 
-case class EventRecord(_id: RecordID, duration: Int, setl: Double, minDur: Double, eventLeg: Double, eventSel: Double,
-                       eventMaxLen: Double, eventMaxTime: Int, records: Seq[SecRecord])
+case class EventRecord(_id: RecordID, duration: Int, setl: Double, minDur: Double, eventLeq: Double, eventSel: Double,
+                       eventMaxLen: Double, eventMaxTime: Date, records: Seq[SecRecord])
 
-case class FlightInfo(_id: ObjectId, startDate: Date, startTime: Date, acftID: String, operation: String, runway: String, flightRoute: String)
+case class FlightInfo(_id: ObjectId, start: Date, acftID: String, operation: String, runway: String, flightRoute: String)
 
 object FlightInfo {
-  def apply(startDate: Date, startTime: Date, acftID: String, operation: String, runway: String, flightRoute: String): FlightInfo =
-    FlightInfo(new ObjectId(), startDate, startTime, acftID, operation, runway, flightRoute)
+  def apply(start: Date, acftID: String, operation: String, runway: String, flightRoute: String): FlightInfo =
+    FlightInfo(new ObjectId(), start, acftID, operation, runway, flightRoute)
 }
 
 case class ReportRecordOp(reportInfo: ReportInfo, mongoDB: MongoDB) {

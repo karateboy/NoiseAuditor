@@ -116,6 +116,7 @@ export default Vue.extend({
     await this.getAirportList();
     let activeReportIDs = this.activeReportIDs as Array<ReportID>;
     if (activeReportIDs.length !== 0) {
+      this.getReportInfo();
       this.form._id = activeReportIDs[activeReportIDs.length - 1];
       let me = this;
       this.timerID = setInterval(() => {

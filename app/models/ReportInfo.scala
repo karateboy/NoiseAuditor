@@ -108,10 +108,10 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
     f
   }
 
-  def updateSubTask(_id:ReportID, task:SubTask) = {
+  def incSubTaskCurrentCount(_id:ReportID, task:SubTask) = {
     val filter = Filters.and(Filters.equal("_id", _id),
       Filters.equal("tasks.name", task.name))
-    val update = Updates.set("tasks.$.current", task.current)
+    val update = Updates.inc("tasks.$.current", 1)
     val f = collection.updateOne(filter, update).toFuture()
     f onFailure(errorHandler())
     f

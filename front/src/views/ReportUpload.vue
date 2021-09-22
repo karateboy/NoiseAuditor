@@ -158,7 +158,7 @@ export default Vue.extend({
     async checkAirportInfo() {
       try {
         const res = await axios.get(
-          `/LatestAirportInfo/${this.form._id.airportID}/${this.form._id.year}/${this.form._id.quarter}`,
+          `/AirportInfo/${this.form._id.airportID}/${this.form._id.year}/${this.form._id.quarter}`,
         );
         if (res.status === 200) {
           const ret = res.data;
