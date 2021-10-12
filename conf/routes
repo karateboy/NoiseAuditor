@@ -35,8 +35,6 @@ GET      /RealtimeStatus                                                        
 
 GET      /AlarmReport/:level/:start/:end                                          controllers.Query.alarmReport(level:Int, start:Long, end:Long)
 
-POST     /SaveMonitorTypeConfig                                                   controllers.HomeController.saveMonitorTypeConfig
-
 #Report
 GET      /monitorReport/:reportType/:reportDate                                   controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="html")
 GET      /PDF/monitorReport/:reportType/:reportDate                               controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="pdf")

@@ -15,7 +15,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp, configuration: Configuration,
-                               monitorTypeOp: MonitorTypeOp, groupOp: GroupOp, airportOp: AirportOp,
+                              groupOp: GroupOp, airportOp: AirportOp,
                                airportInfoOp: AirportInfoOp, actorSystem: ActorSystem, reportInfoOp: ReportInfoOp,
                                mongoDB: MongoDB) extends Controller {
 
@@ -115,28 +115,6 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
     Ok(Json.toJson(groups))
   }
 
-  def saveMonitorTypeConfig() = Security.Authenticated {
-    implicit request =>
-      try {
-        val mtForm = Form(
-          mapping(
-            "id" -> text,
-            "data" -> text)(EditData.apply)(EditData.unapply))
-
-        val mtData = mtForm.bindFromRequest.get
-        val mtInfo = mtData.id.split(":")
-        val mt = (mtInfo(0))
-
-        monitorTypeOp.updateMonitorType(mt, mtInfo(1), mtData.data)
-
-        Ok(mtData.data)
-      } catch {
-        case ex: Throwable =>
-          Logger.error(ex.getMessage, ex)
-          BadRequest(ex.toString)
-      }
-  }
-
   def getUser(id: String) = Security.Authenticated {
     implicit request =>
       implicit val write = Json.writes[User]
@@ -231,6 +209,7 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
 
   def getReportInfo(year:Int, quarter:Int, airportID:Int, version:Int) = Security.Authenticated.async {
     val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
+    implicit val write4 = Json.writes[DataFormatError]
     implicit val write1 = Json.writes[SubTask]
     implicit val write3 = Json.writes[AirportInfoID]
     implicit val write2 = Json.writes[ReportID]

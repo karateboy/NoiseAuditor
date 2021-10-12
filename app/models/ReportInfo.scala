@@ -11,20 +11,30 @@ import scala.concurrent.Future
 import scala.util.{Failure, Success}
 import org.mongodb.scala.model._
 
+import java.time.LocalTime
+import java.util.Date
+
+case class DataFormatError(fileName:String, terminal: String, time:Date, dataType:String,
+                           fieldName:String, errorInfo:String, value:String)
 case class SubTask(name:String, var current:Int, total:Int)
 case class ReportID(airpotInfoID:AirportInfoID, version:Int)
 case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
                       var state:String = "上傳檔案中",
-                      var importLog:String = "",
-                      var auditLog:String="",
+                      var unableAuditReason: Seq[String] = Seq.empty[String],
+                      var dataFormatErrorList: Seq[DataFormatError] = Seq.empty[DataFormatError],
+                      var auditLog:Seq[String] = Seq.empty[String],
                       tasks: Seq[SubTask] = Seq.empty[SubTask]){
   val getCollectionName = s"Y${year}Q${quarter}airport${_id.airpotInfoID.airportID}v${_id.version}"
-  def appendImportLog(message:String): Unit = {
-    importLog = importLog + s"${DateTime.now().toString} - $message\n"
+
+  def appendUnableAuditReason(reason:String)={
+    unableAuditReason = unableAuditReason:+(reason)
+  }
+  def appendImportLog(dfe:DataFormatError): Unit = {
+    dataFormatErrorList = dataFormatErrorList:+(dfe)
   }
 
   def appendAuditLog(message:String): Unit ={
-    auditLog = auditLog + s"${DateTime.now().toString} - $message\n"
+    auditLog = auditLog:+(message)
   }
 
   def removeCollection(mongoDB: MongoDB) = {
@@ -96,7 +106,7 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
   def clear()={
     val f = collection.find(Filters.exists("_id")).toFuture()
     for(ret<-f){
-      ret map {r => r.removeCollection(mongoDB)}
+      ret foreach { r => r.removeCollection(mongoDB)}
     }
   }
   clear()

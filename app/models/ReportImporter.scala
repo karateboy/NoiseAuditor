@@ -5,7 +5,7 @@ import com.linuxense.javadbf.DBFUtils
 import models.ModelHelper._
 import models.ReportRecord.{Noise, RecordPeriod, WindDirection, WindSpeed}
 import org.joda.time.format.DateTimeFormat
-import org.joda.time.{LocalDate, LocalTime}
+import org.joda.time.{DateTime, LocalDate, LocalTime}
 import org.mongodb.scala.MongoCollection
 import play.api._
 
@@ -110,14 +110,12 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
             if (process.exitValue() != 0) {
               val message = "解壓縮失敗: 檔案錯誤"
               reportInfo.state = message
-              reportInfo.appendImportLog(message)
+              reportInfo.appendUnableAuditReason("上傳檔案解壓縮失敗")
               reportInfoOp.upsertReportInfo(reportInfo)
               self ! TaskComplete
             } else {
               val message = "解壓縮成功"
               reportInfo.state = message
-              reportInfo.appendImportLog(message)
-              reportInfoOp.upsertReportInfo(reportInfo)
               dataFile.delete()
               context become importDbfPhase(parentPath, 0)
               finish(context.self.path.name)
@@ -133,7 +131,7 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
 
     case TaskAbort(reason) =>
       reportInfo.state = "失敗"
-      reportInfo.appendImportLog(reason)
+      reportInfo.appendUnableAuditReason(reason)
       reportInfoOp.upsertReportInfo(reportInfo)
       finish(context.self.path.name)
       self ! PoisonPill
@@ -596,7 +594,7 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
       }
     case TaskAbort(reason) =>
       reportInfo.state = "失敗"
-      reportInfo.appendImportLog(reason)
+      reportInfo.appendUnableAuditReason(reason)
       reportInfoOp.upsertReportInfo(reportInfo)
       finish(context.self.path.name)
       self ! PoisonPill
