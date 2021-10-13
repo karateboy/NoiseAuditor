@@ -165,7 +165,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
             else
               Noise
 
-          Logger.info(s"處理 ${path.toFile.getPath}")
           import com.linuxense.javadbf.DBFReader
           var reader: DBFReader = null
           var recordList = Seq.empty[MinRecord]
@@ -201,7 +200,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                           dataType = "每秒噪音監測資料",
                           fieldName = s"SL$i", errorInfo = "無資料", value = "")
                         dfeList = dfeList:+(dfe)
-                        Logger.error(s"${path.toFile.getPath} ${mntName} ${start} 遺失第${i}秒資料")
                     }
                   }
                   val record = MinRecord(RecordID(start.toDate, mntNumber, recordType.toString), secRecords)
@@ -222,7 +220,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
                 fieldName = "", errorInfo = "無資料", value = "")
               dfeList = dfeList:+(dfe)
-              Logger.info(s"${path.toFile.getPath}無資料")
             }
           } catch {
             case ex: Exception =>
@@ -428,7 +425,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
         reportInfoOp.addSubTask(reportInfo._id, subTask)
         var dfeList = List.empty[DataFormatError]
         for (path <- fileCount) {
-          Logger.info(s"處理 ${path.toFile.getPath}")
           import com.linuxense.javadbf.DBFReader
           var reader: DBFReader = null
           var recordList = Seq.empty[EventRecord]
@@ -485,7 +481,13 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
             } while (rowObjects != null)
             if (recordList.nonEmpty) {
               val f = collection.insertMany(recordList).toFuture()
-              f onFailure (errorHandler)
+              f onFailure({
+                case _:Throwable=>
+                  val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                    dataType = s"$relativePath",
+                    fieldName = "", errorInfo = "出現重複事件", value = "")
+                  dfeList = dfeList:+(dfe)
+              })
             } else {
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                 dataType = s"$relativePath",
@@ -570,7 +572,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                 dataType = s"$relativePath",
                 fieldName = "", errorInfo = "檔案無資料", value = "")
               dfeList = dfeList:+(dfe)
-              Logger.info(s"${path.toFile.getPath}無資料")
             }
           } catch {
             case ex: Exception =>

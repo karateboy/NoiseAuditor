@@ -207,6 +207,16 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
     Ok(Json.obj("finished" -> ReportImporter.isFinished(actorName)))
   }
 
+  def getReportInfoIdList() = Security.Authenticated.async {
+    val f = reportInfoOp.getAllReortInfoList()
+    for(ret <-f) yield{
+      implicit val write3 = Json.writes[AirportInfoID]
+      implicit val write2 = Json.writes[ReportID]
+      val idList = ret.map{r=>r._id}
+        Ok(Json.toJson(idList))
+    }
+
+  }
   def getReportInfo(year:Int, quarter:Int, airportID:Int, version:Int) = Security.Authenticated.async {
     val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
     implicit val write4 = Json.writes[DataFormatError]

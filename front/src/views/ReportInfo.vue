@@ -68,6 +68,8 @@ export default Vue.extend({
   data() {
     let _id: ReportID | undefined;
     let reportInfo: ReportInfo | undefined;
+    let reportIdList = Array<ReportID>();
+    let reportID: ReportID | undefined;
     return {
       form: {
         _id,
@@ -75,6 +77,7 @@ export default Vue.extend({
       airportList: Array<Airport>(),
       timerID: 0,
       reportInfo,
+      reportIdList,
     };
   },
   computed: {
@@ -96,7 +99,7 @@ export default Vue.extend({
     reportList(): Array<ReportDesc> {
       let ret = Array<ReportDesc>();
 
-      for (let reportID of this.activeReportIDs as Array<ReportID>) {
+      for (let reportID of this.reportIdList) {
         let airportName = `${reportID.airpotInfoID.airportID}`;
         let airport = this.airportMap.get(reportID.airpotInfoID.airportID);
         if (airport !== undefined) airportName = airport.name;
@@ -120,15 +123,16 @@ export default Vue.extend({
   },
   async mounted() {
     await this.getAirportList();
+    await this.getReportInfoIdList();
     let activeReportIDs = this.activeReportIDs as Array<ReportID>;
-    if (activeReportIDs.length !== 0) {
-      this.getReportInfo();
+    if (activeReportIDs.length !== 0)
       this.form._id = activeReportIDs[activeReportIDs.length - 1];
-      let me = this;
-      this.timerID = setInterval(() => {
-        me.getReportInfo();
-      }, 3000);
-    }
+
+    this.getReportInfo();
+    let me = this;
+    this.timerID = setInterval(() => {
+      me.getReportInfo();
+    }, 3000);
   },
   beforeDestroy() {
     clearInterval(this.timerID);
@@ -158,6 +162,16 @@ export default Vue.extend({
         if (res.status === 200) {
           const ret = res.data as Array<ReportInfo>;
           this.reportInfo = ret[0];
+        }
+      } catch (err) {
+        throw new Error(err);
+      }
+    },
+    async getReportInfoIdList() {
+      try {
+        const res = await axios.get('/ReportIDs');
+        if (res.status === 200) {
+          this.reportIdList = res.data;
         }
       } catch (err) {
         throw new Error(err);

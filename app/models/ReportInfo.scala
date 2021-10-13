@@ -76,6 +76,11 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
 
   init
 
+  def getAllReortInfoList(): Future[Seq[ReportInfo]] = {
+    val f = collection.find(Filters.exists("_id")).toFuture()
+    f onFailure(errorHandler)
+    f
+  }
   def getReportInfoList(airpotInfoID:AirportInfoID): Future[Seq[ReportInfo]] ={
     val f = collection.find(Filters.equal("_id.airpotInfoID", airpotInfoID)).toFuture()
     f onFailure(errorHandler)
