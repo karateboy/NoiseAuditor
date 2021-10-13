@@ -4,14 +4,14 @@ import akka.actor._
 import com.linuxense.javadbf.DBFUtils
 import models.ModelHelper._
 import models.ReportRecord.{Noise, RecordPeriod, WindDirection, WindSpeed}
+import org.apache.commons.io.FileUtils
 import org.joda.time.format.DateTimeFormat
-import org.joda.time.{DateTime, LocalDate, LocalTime}
+import org.joda.time.{LocalDate, LocalTime}
 import org.mongodb.scala.MongoCollection
 import play.api._
 
 import java.io.{BufferedInputStream, File}
 import java.nio.file.{Files, Path, Paths}
-import java.util.Date
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
@@ -20,9 +20,9 @@ object ReportImporter {
   var n = 0
   private var actorRefMap = Map.empty[String, ActorRef]
 
-  def start(dataFile: File, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp)(implicit actorSystem: ActorSystem) = {
+  def start(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp)(implicit actorSystem: ActorSystem) = {
     val name = getName
-    val actorRef = actorSystem.actorOf(ReportImporter.props(dataFile = dataFile,
+    val actorRef = actorSystem.actorOf(ReportImporter.props(dataFile = dataFile, airportInfoOp = airportInfoOp,
       reportInfo = reportInfo, reportInfoOp, reportRecordOp), name)
     actorRefMap = actorRefMap + (name -> actorRef)
     name
@@ -33,8 +33,8 @@ object ReportImporter {
     s"dataImporter${n}"
   }
 
-  def props(dataFile: File, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp) =
-    Props(classOf[ReportImporter], dataFile, reportInfo, reportInfoOp, reportRecordOp)
+  def props(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp) =
+    Props(classOf[ReportImporter], dataFile, airportInfoOp, reportInfo, reportInfoOp, reportRecordOp)
 
   def finish(actorName: String) = {
     actorRefMap = actorRefMap.filter(p => {
@@ -54,6 +54,8 @@ object ReportImporter {
 
   case class TaskAbort(reason: String)
 
+  case class ImportSecFile(path: Path, task: SubTask)
+
   case object ImportDatabase
 
   case object ExtractZipFile
@@ -65,8 +67,6 @@ object ReportImporter {
   case object ImportSecondNoise
 
   case object ImportSecondWind
-
-  case class ImportSecFile(path:Path, task:SubTask)
 
   case object ImportHourlyNoise
 
@@ -87,7 +87,8 @@ object ReportImporter {
   case object AuditReport
 }
 
-class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp) extends Actor {
+class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
+                     reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp) extends Actor {
 
   import ReportImporter._
 
@@ -117,9 +118,12 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
               val message = "解壓縮成功"
               reportInfo.state = message
               dataFile.delete()
-              context become importDbfPhase(parentPath, 0)
-              finish(context.self.path.name)
-              self ! ImportDatabase
+              val f = getTerminalMap()
+              for(map<-f){
+                context become importDbfPhase(parentPath, 0, map)
+                finish(context.self.path.name)
+                self ! ImportDatabase
+              }
             }
           } catch {
             case ex: Exception =>
@@ -139,23 +143,24 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
 
   def getDbfList(mainFolder: String, relativePath: String): List[Path] = {
     val paths: List[Path] = Files.list(Paths.get(mainFolder, relativePath)).iterator().asScala.toList
-    val ret = paths.filter(!Files.isDirectory(_)).filter(p=>p.toFile.getAbsolutePath.endsWith("dbf"))
+    val ret = paths.filter(!Files.isDirectory(_)).filter(p => p.toFile.getAbsolutePath.endsWith("dbf"))
     Logger.info(s"$mainFolder\\$relativePath #=${ret.size}")
     ret
   }
 
-  def importSecData(mainFolder:String, relativePath:String)={
+  def importSecData(mainFolder: String, relativePath: String) = {
     Future {
       blocking {
         val fileCount = getDbfList(mainFolder, relativePath)
         var count = 0
         val subTask = SubTask(s"匯入${relativePath}", count, fileCount.size)
         reportInfoOp.addSubTask(reportInfo._id, subTask)
+        var dfeList = List.empty[DataFormatError]
         for (path <- fileCount) {
           val recordType =
             if (path.toFile.getName.contains("wd"))
               WindDirection
-            else if(path.toFile.getName.contains("ws"))
+            else if (path.toFile.getName.contains("ws"))
               WindSpeed
             else
               Noise
@@ -177,10 +182,11 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                 try {
                   val mntNumber = rowObjects(0).asInstanceOf[String].trim.toInt
                   val mntName = rowObjects(1).asInstanceOf[String].trim
+
                   val startDate = try {
                     LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
-                  }catch{
-                    case _:IllegalArgumentException=>
+                  } catch {
+                    case _: IllegalArgumentException =>
                       LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
                   }
                   val startTime = LocalTime.parse(rowObjects(3).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm"))
@@ -190,7 +196,11 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                     try {
                       secRecords = secRecords :+ SecRecord(start.plusSeconds(i).toDate(), rowObjects(i + 5).asInstanceOf[java.math.BigDecimal].doubleValue())
                     } catch {
-                      case ex: Exception =>
+                      case _:Throwable =>
+                        val dfe = DataFormatError(fileName = path.toFile.getName, terminal = mntName, time = s"${start.plusSeconds(i).toString("yyyy/MM/dd HH:mm:ss")}",
+                          dataType = "每秒噪音監測資料",
+                          fieldName = s"SL$i", errorInfo = "無資料", value = "")
+                        dfeList = dfeList:+(dfe)
                         Logger.error(s"${path.toFile.getPath} ${mntName} ${start} 遺失第${i}秒資料")
                     }
                   }
@@ -198,42 +208,51 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                   recordList = recordList :+ (record)
                 } catch {
                   case ex: Exception =>
-                    Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料")
+                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
+                      fieldName = "", errorInfo = "檔案錯誤", value = "")
+                    dfeList = dfeList:+(dfe)
                 }
               }
             } while (rowObjects != null)
-            if(recordList.nonEmpty){
+            if (recordList.nonEmpty) {
               val collection = reportRecordOp.getMinCollection(recordType)
               val f = collection.insertMany(recordList).toFuture()
               f onFailure (errorHandler)
-              Logger.info(s"成功匯入${path.toFile.getPath}")
-            }else
+            } else {
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
+                fieldName = "", errorInfo = "無資料", value = "")
+              dfeList = dfeList:+(dfe)
               Logger.info(s"${path.toFile.getPath}無資料")
+            }
           } catch {
             case ex: Exception =>
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
+                fieldName = "", errorInfo = "無法讀取", value = "")
+              dfeList = dfeList:+(dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
           }
         }
+        reportInfoOp.appendDataFormatErrors(reportInfo._id, dfeList)
         self ! TaskComplete
       }
     } onFailure ({
       case ex: Exception =>
         Logger.error(s"failed to import ${relativePath}", ex)
-        self ! TaskAbort(s"無法匯入${ relativePath}")
+        self ! TaskAbort(s"無法匯入${relativePath}")
     })
   }
 
-  def importNoiseData(mainFolder:String, relativePath:String, recordPeriod: RecordPeriod)={
+  def importNoiseData(mainFolder: String, relativePath: String, recordPeriod: RecordPeriod) = {
     Future {
       blocking {
         val fileCount = getDbfList(mainFolder, relativePath)
         var count = 0
         val subTask = SubTask(s"匯入${relativePath}", count, fileCount.size)
         reportInfoOp.addSubTask(reportInfo._id, subTask)
+        var dfeList = List.empty[DataFormatError]
         for (path <- fileCount) {
-          Logger.info(s"處理 ${path.toFile.getPath}")
           import com.linuxense.javadbf.DBFReader
           var reader: DBFReader = null
           var recordList = Seq.empty[NoiseRecord]
@@ -252,8 +271,8 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                   val mntName = rowObjects(1).asInstanceOf[String].trim
                   val startDate = try {
                     LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
-                  }catch{
-                    case _:IllegalArgumentException=>
+                  } catch {
+                    case _: IllegalArgumentException =>
                       LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
                   }
                   val startTime = LocalTime.parse(rowObjects(3).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
@@ -277,48 +296,61 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                   val record = NoiseRecord(RecordID(start.toDate, mntNumber, Noise.toString), activity = activity,
                     totalEvent = totalEvent,
                     totalLeq = totalLeq, eventLeq = eventLeq, backLeq = backLeq, totalLdn = totalLdn,
-                    eventLdn=eventLdn, backLdn = backLdn,
-                    l5 = l5, l10 = l10, l50=l50, l90 = l90, l95=l95, l99=l99, numEvent = numEvent, duration = duration)
+                    eventLdn = eventLdn, backLdn = backLdn,
+                    l5 = l5, l10 = l10, l50 = l50, l90 = l90, l95 = l95, l99 = l99, numEvent = numEvent, duration = duration)
                   recordList = recordList :+ (record)
                 } catch {
                   case ex: Exception =>
-                    Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料")
+                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                      dataType = s"$relativePath",
+                      fieldName = "", errorInfo = "資料格式錯誤", value = ex.getMessage)
+                    dfeList = dfeList:+(dfe)
+                    Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
             } while (rowObjects != null)
-            if(recordList.nonEmpty){
+            if (recordList.nonEmpty) {
               val collection = reportRecordOp.getNoiseCollection(recordPeriod)
               val f = collection.insertMany(recordList).toFuture()
               f onFailure (errorHandler)
-              Logger.info(s"成功匯入${path.toFile.getPath}")
-            }else
-              Logger.info(s"${path.toFile.getPath}無資料")
+            } else {
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                dataType = s"$relativePath",
+                fieldName = "", errorInfo = "無資料", value = "")
+              dfeList = dfeList:+(dfe)
+            }
           } catch {
             case ex: Exception =>
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                dataType = s"$relativePath",
+                fieldName = "", errorInfo = "無法讀取資料", value = "")
+              dfeList = dfeList:+(dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
           }
         }
+        reportInfoOp.appendDataFormatErrors(reportInfo._id, dfeList)
         self ! TaskComplete
       }
     } onFailure ({
       case ex: Exception =>
         Logger.error(s"failed to import ${relativePath}", ex)
-        self ! TaskAbort(s"無法匯入${ relativePath}")
+        self ! TaskAbort(s"無法匯入${relativePath}")
     })
   }
+
   import ReportRecord._
 
-  def importWindHourData(mainFolder:String, relativePath:String)={
+  def importWindHourData(mainFolder: String, relativePath: String) = {
     Future {
       blocking {
         val fileCount = getDbfList(mainFolder, relativePath)
         var count = 0
         val subTask = SubTask(s"匯入${relativePath}", count, fileCount.size)
         reportInfoOp.addSubTask(reportInfo._id, subTask)
+        var dfeList = List.empty[DataFormatError]
         for (path <- fileCount) {
-          Logger.info(s"處理 ${path.toFile.getPath}")
           import com.linuxense.javadbf.DBFReader
           var reader: DBFReader = null
           var recordList = Seq.empty[WindHourRecord]
@@ -337,8 +369,8 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                   val mntName = rowObjects(1).asInstanceOf[String].trim
                   val startDate = try {
                     LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
-                  }catch{
-                    case _:IllegalArgumentException=>
+                  } catch {
+                    case _: IllegalArgumentException =>
                       LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
                   }
                   val startTime = LocalTime.parse(rowObjects(3).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
@@ -351,39 +383,50 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                 } catch {
                   case ex: Exception =>
                     Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
+                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                      dataType = s"$relativePath",
+                      fieldName = "", errorInfo = "檔案錯誤", value = ex.getMessage)
+                    dfeList = dfeList:+(dfe)
                 }
               }
             } while (rowObjects != null)
-            if(recordList.nonEmpty){
+            if (recordList.nonEmpty) {
               val collection = reportRecordOp.getWindHourCollection
               val f = collection.insertMany(recordList).toFuture()
               f onFailure (errorHandler)
-              Logger.info(s"成功匯入${path.toFile.getPath}")
-            }else
-              Logger.info(s"${path.toFile.getPath}無資料")
+            } else {
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
+                fieldName = "", errorInfo = "無資料", value = "")
+              dfeList = dfeList:+(dfe)
+            }
           } catch {
             case ex: Exception =>
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
+                fieldName = "", errorInfo = "無法讀取", value = "")
+              dfeList = dfeList:+(dfe)
           } finally {
             DBFUtils.close(reader)
           }
         }
+        reportInfoOp.appendDataFormatErrors(reportInfo._id, dfeList)
         self ! TaskComplete
       }
     } onFailure ({
       case ex: Exception =>
         Logger.error(s"failed to import ${relativePath}", ex)
-        self ! TaskAbort(s"無法匯入${ relativePath}")
+        self ! TaskAbort(s"無法匯入${relativePath}")
     })
   }
 
-  def importEventData(mainFolder:String, relativePath:String, collection:MongoCollection[EventRecord])={
+  def importEventData(mainFolder: String, relativePath: String, collection: MongoCollection[EventRecord]) = {
     Future {
       blocking {
         val fileCount = getDbfList(mainFolder, relativePath)
         var count = 0
         val subTask = SubTask(s"匯入${relativePath}", count, fileCount.size)
         reportInfoOp.addSubTask(reportInfo._id, subTask)
+        var dfeList = List.empty[DataFormatError]
         for (path <- fileCount) {
           Logger.info(s"處理 ${path.toFile.getPath}")
           import com.linuxense.javadbf.DBFReader
@@ -404,8 +447,8 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                   val mntName = rowObjects(1).asInstanceOf[String].trim
                   val startDate: LocalDate = try {
                     LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
-                  }catch{
-                    case _:IllegalArgumentException=>
+                  } catch {
+                    case _: IllegalArgumentException =>
                       LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
                   }
                   val startTime = LocalTime.parse(rowObjects(3).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
@@ -426,47 +469,59 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                         Logger.error(s"${path.toFile.getPath} ${mntName} ${start} 遺失第${i}秒資料")
                     }
                   }
-                  val record = EventRecord(RecordID(start.toDate, mntNumber, Event.toString), duration=duration,
-                    setl = setl, minDur = minDurationTime, eventLeq=eventLeq, eventSel=eventSel, eventMaxLen = eventMaxLen,
+                  val record = EventRecord(RecordID(start.toDate, mntNumber, Event.toString), duration = duration,
+                    setl = setl, minDur = minDurationTime, eventLeq = eventLeq, eventSel = eventSel, eventMaxLen = eventMaxLen,
                     eventMaxTime = startDate.toLocalDateTime(eventMaxT).toDate(), secRecords)
                   recordList = recordList :+ (record)
                 } catch {
                   case ex: Exception =>
+                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                      dataType = s"$relativePath",
+                      fieldName = "", errorInfo = "格式錯誤", value = ex.getMessage)
+                    dfeList = dfeList:+(dfe)
                     Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
             } while (rowObjects != null)
-            if(recordList.nonEmpty){
+            if (recordList.nonEmpty) {
               val f = collection.insertMany(recordList).toFuture()
-              f onFailure(errorHandler(s"Error@${path.toFile.getPath}"))
-              Logger.info(s"成功匯入${path.toFile.getPath}")
-            }else
-              Logger.info(s"${path.toFile.getPath}無資料")
+              f onFailure (errorHandler)
+            } else {
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                dataType = s"$relativePath",
+                fieldName = "", errorInfo = "檔案無資料", value = "")
+              dfeList = dfeList:+(dfe)
+            }
           } catch {
             case ex: Exception =>
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                dataType = s"$relativePath",
+                fieldName = "", errorInfo = "無法讀取檔案", value = "")
+              dfeList = dfeList:+(dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
           }
         }
+        reportInfoOp.appendDataFormatErrors(reportInfo._id, dfeList)
         self ! TaskComplete
       }
     } onFailure ({
       case ex: Exception =>
         Logger.error(s"failed to import ${relativePath}", ex)
-        self ! TaskAbort(s"無法匯入${ relativePath}")
+        self ! TaskAbort(s"無法匯入${relativePath}")
     })
   }
 
-  def importFlightData(mainFolder:String, relativePath:String)={
+  def importFlightData(mainFolder: String, relativePath: String) = {
     Future {
       blocking {
         val fileCount = getDbfList(mainFolder, relativePath)
         var count = 0
         val subTask = SubTask(s"匯入${relativePath}", count, fileCount.size)
         reportInfoOp.addSubTask(reportInfo._id, subTask)
+        var dfeList = List.empty[DataFormatError]
         for (path <- fileCount) {
-          Logger.info(s"處理 ${path.toFile.getPath}")
           import com.linuxense.javadbf.DBFReader
           var reader: DBFReader = null
           var recordList = Seq.empty[FlightInfo]
@@ -483,8 +538,8 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                 try {
                   val startDate = try {
                     LocalDate.parse(rowObjects(0).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
-                  }catch{
-                    case _:IllegalArgumentException=>
+                  } catch {
+                    case _: IllegalArgumentException =>
                       LocalDate.parse(rowObjects(0).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
                   }
                   val startTime = LocalTime.parse(rowObjects(1).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
@@ -498,34 +553,56 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
                   recordList = recordList :+ (record)
                 } catch {
                   case ex: Exception =>
+                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                      dataType = s"$relativePath",
+                      fieldName = "", errorInfo = "資料格式錯誤", value = ex.getMessage)
+                    dfeList = dfeList:+(dfe)
                     Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
             } while (rowObjects != null)
-            if(recordList.nonEmpty){
+            if (recordList.nonEmpty) {
               val collection = reportRecordOp.getFlightCollection
               val f = collection.insertMany(recordList).toFuture()
               f onFailure (errorHandler)
-              Logger.info(s"成功匯入${path.toFile.getPath}")
-            }else
+            } else {
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                dataType = s"$relativePath",
+                fieldName = "", errorInfo = "檔案無資料", value = "")
+              dfeList = dfeList:+(dfe)
               Logger.info(s"${path.toFile.getPath}無資料")
+            }
           } catch {
             case ex: Exception =>
+              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                dataType = s"$relativePath",
+                fieldName = "", errorInfo = "檔案無法讀取", value = "")
+              dfeList = dfeList:+(dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
           }
         }
+        reportInfoOp.appendDataFormatErrors(reportInfo._id, dfeList)
         self ! TaskComplete
       }
     } onFailure ({
       case ex: Exception =>
         Logger.error(s"failed to import ${relativePath}", ex)
-        self ! TaskAbort(s"無法匯入${ relativePath}")
+        self ! TaskAbort(s"無法匯入${relativePath}")
     })
   }
 
-  def importDbfPhase(mainFolder: String, importTasks: Int): Receive = {
+  def getTerminalMap(): Future[Map[Int, String]] = {
+    val infoID = reportInfo._id.airpotInfoID
+    val f = airportInfoOp.get(infoID.airportID, infoID.year, infoID.quarter)
+    for (ret <- f) yield {
+      val pairs = ret(0).terminals.map(t => t.no -> t.name)
+      pairs.toMap
+    }
+  }
+
+  def importDbfPhase(mainFolder: String, importTasks: Int, terminalMap: Map[Int, String]): Receive = {
 
     case ImportDatabase =>
       reportInfoOp.updateState(reportInfo._id, "匯入資料庫")
@@ -542,54 +619,56 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
       self ! ImportDailyFlight
 
     case ImportSecondWind =>
-      context become importDbfPhase(mainFolder, importTasks+1)
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importSecData(mainFolder, "每秒風速監測資料")
 
     case ImportSecondNoise =>
-      context become importDbfPhase(mainFolder, importTasks+1)
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importSecData(mainFolder, "每秒噪音監測資料")
 
     case ImportHourlyNoise =>
-      context become importDbfPhase(mainFolder, importTasks+1)
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importNoiseData(mainFolder, "每小時噪音監測資料", ReportRecord.Hour)
 
-    case ImportDailyNoise=>
-      context become importDbfPhase(mainFolder, importTasks+1)
+    case ImportDailyNoise =>
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importNoiseData(mainFolder, "每日噪音監測資料", ReportRecord.Day)
 
-    case ImportMonthlyNoise=>
-      context become importDbfPhase(mainFolder, importTasks+1)
+    case ImportMonthlyNoise =>
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importNoiseData(mainFolder, "每月噪音監測資料", ReportRecord.Month)
 
-    case ImportQuarterNoise=>
-      context become importDbfPhase(mainFolder, importTasks+1)
+    case ImportQuarterNoise =>
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importNoiseData(mainFolder, "每季噪音監測資料", ReportRecord.Quarter)
 
-    case ImportYearlyNoise=>
-      context become importDbfPhase(mainFolder, importTasks+1)
+    case ImportYearlyNoise =>
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importNoiseData(mainFolder, "一年噪音監測資料", ReportRecord.Year)
 
-    case ImportHourlyWeather=>
-      context become importDbfPhase(mainFolder, importTasks+1)
+    case ImportHourlyWeather =>
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importWindHourData(mainFolder, "每小時氣象噪音監測資料")
 
-    case ImportNoiseEvent=>
-      context become importDbfPhase(mainFolder, importTasks+1)
+    case ImportNoiseEvent =>
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importEventData(mainFolder, "噪音事件監測資料", reportRecordOp.getEventCollection)
 
-    case ImportTestNoiseEvent=>
-      context become importDbfPhase(mainFolder, importTasks+1)
+    case ImportTestNoiseEvent =>
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importEventData(mainFolder, "試車噪音監測資料", reportRecordOp.getTestEventCollection)
 
     case ImportDailyFlight =>
-      context become importDbfPhase(mainFolder, importTasks+1)
+      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
       importFlightData(mainFolder, "每日飛航監測資料")
 
     case TaskComplete =>
       if (importTasks - 1 != 0)
-        context become importDbfPhase(mainFolder, importTasks - 1)
+        context become importDbfPhase(mainFolder, importTasks - 1,  terminalMap)
       else {
         context become auditReportPhase(mainFolder, 0)
+        reportInfoOp.clearAllSubTasks(reportInfo._id)
+        FileUtils.deleteDirectory(new File(mainFolder))
         self ! AuditReport
       }
     case TaskAbort(reason) =>
@@ -602,6 +681,22 @@ class ReportImporter(dataFile: File, reportInfo: ReportInfo, reportInfoOp: Repor
 
   def auditReportPhase(mainFolder: String, auditTasks: Int): Receive = {
     case AuditReport =>
+      reportInfoOp.updateState(reportInfo._id, "產出稽核報告中")
+      context become auditReportPhase(mainFolder, 1)
+      self ! TaskComplete
+    case TaskComplete =>
+      if (auditTasks - 1 != 0)
+        context become auditReportPhase(mainFolder, auditTasks - 1)
+      else {
+        reportInfoOp.updateState(reportInfo._id, "稽核完成")
+        reportInfoOp.clearAllSubTasks(reportInfo._id)
+        finish(context.self.path.name)
+        self ! PoisonPill
+      }
+    case TaskAbort(reason) =>
+      reportInfo.state = "失敗"
+      reportInfo.appendUnableAuditReason(reason)
+      reportInfoOp.upsertReportInfo(reportInfo)
       finish(context.self.path.name)
       self ! PoisonPill
   }

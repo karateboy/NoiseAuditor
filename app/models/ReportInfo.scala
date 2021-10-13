@@ -10,11 +10,11 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
 import org.mongodb.scala.model._
+import org.mongodb.scala.result.UpdateResult
 
 import java.time.LocalTime
-import java.util.Date
 
-case class DataFormatError(fileName:String, terminal: String, time:Date, dataType:String,
+case class DataFormatError(fileName:String, terminal: String, time:String, dataType:String,
                            fieldName:String, errorInfo:String, value:String)
 case class SubTask(name:String, var current:Int, total:Int)
 case class ReportID(airpotInfoID:AirportInfoID, version:Int)
@@ -29,13 +29,6 @@ case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
   def appendUnableAuditReason(reason:String)={
     unableAuditReason = unableAuditReason:+(reason)
   }
-  def appendImportLog(dfe:DataFormatError): Unit = {
-    dataFormatErrorList = dataFormatErrorList:+(dfe)
-  }
-
-  def appendAuditLog(message:String): Unit ={
-    auditLog = auditLog:+(message)
-  }
 
   def removeCollection(mongoDB: MongoDB) = {
     for(nameList <- mongoDB.database.listCollectionNames().toFuture()){
@@ -45,7 +38,6 @@ case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
       }
     }
   }
-
 }
 
 object ReportInfo{
@@ -63,7 +55,7 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
 
   val ColName = "reportInfos"
   val codecRegistry = fromRegistries(fromProviders(classOf[ReportInfo],
-    classOf[ReportID], classOf[AirportInfoID], classOf[AirportInfo], classOf[Terminal], classOf[SubTask]), DEFAULT_CODEC_REGISTRY)
+    classOf[ReportID], classOf[AirportInfoID], classOf[AirportInfo], classOf[Terminal], classOf[SubTask], classOf[DataFormatError]), DEFAULT_CODEC_REGISTRY)
   val collection: MongoCollection[ReportInfo] = mongoDB.database.withCodecRegistry(codecRegistry).getCollection(ColName)
 
   collection.createIndex(Indexes.ascending("airportInfo._id", "year", "quarter"), IndexOptions().unique(true))
@@ -109,9 +101,10 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
       ret foreach { r => r.removeCollection(mongoDB)}
     }
   }
+  // FIXME use during test
   clear()
 
-  def addSubTask(_id:ReportID, task:SubTask) = {
+  def addSubTask(_id:ReportID, task:SubTask): Future[UpdateResult] = {
     val updates = Updates.addToSet("tasks", task)
     val f = collection.updateOne(Filters.equal("_id", _id), updates).toFuture()
     f onFailure(errorHandler())
@@ -129,6 +122,20 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
 
   def get(_id:ReportID): Future[Seq[ReportInfo]] ={
     val f = collection.find(Filters.equal("_id", _id)).toFuture()
+    f onFailure(errorHandler())
+    f
+  }
+
+  def appendDataFormatErrors(_id:ReportID, dfeList: Seq[DataFormatError]) = {
+    val update = Updates.pushEach("dataFormatErrorList", dfeList:_*)
+    val f = collection.updateOne(Filters.equal("_id", _id), update).toFuture()
+    f onFailure(errorHandler())
+    f
+  }
+
+  def clearAllSubTasks(_id:ReportID): Future[UpdateResult] ={
+    val updates = Updates.set("tasks", Seq.empty[SubTask])
+    val f = collection.updateOne(Filters.equal("_id", _id), updates).toFuture()
     f onFailure(errorHandler())
     f
   }

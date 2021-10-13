@@ -12,7 +12,14 @@ import scala.util.{Failure, Success}
 
 case class Terminal(no:Int, name:String)
 case class AirportInfoID(year:Int, quarter:Int, airportID:Int)
-case class AirportInfo(_id:AirportInfoID, terminals: Seq[Terminal])
+case class AirportInfo(_id:AirportInfoID, terminals: Seq[Terminal]){
+  def map(): Map[Int, Terminal] ={
+    val pairs =
+      for(terminal<-terminals)yield
+        terminal.no->terminal
+    pairs.toMap
+  }
+}
 
 @Singleton
 class AirportInfoOp @Inject()(mongoDB: MongoDB){

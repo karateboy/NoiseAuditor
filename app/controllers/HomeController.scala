@@ -196,7 +196,7 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
           val file = dataFile.ref.moveTo(targetFilePath.toFile, true)
           val reportInfo = ReportInfo(airportInfoID = airportInfoID, version = ver)
           reportInfoOp.upsertReportInfo(reportInfo)
-          val actorName = ReportImporter.start(dataFile = file, reportInfo = reportInfo,
+          val actorName = ReportImporter.start(dataFile = file, airportInfoOp= airportInfoOp, reportInfo = reportInfo,
             reportInfoOp, ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB))(actorSystem)
           Ok(Json.obj("actorName" -> actorName, "version"->ver))
         }

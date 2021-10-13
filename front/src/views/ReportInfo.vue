@@ -26,7 +26,7 @@
         <b-row>
           <b-col cols="12">
             <b-form-group label="處理狀態:" label-for="state" label-cols-md="3">
-              <b-input :value="reportInfo.state" readonly />
+              <b-input :value="state" readonly />
             </b-form-group>
           </b-col>
           <b-col v-for="task in reportTasks" :key="task.name" cols="12">
@@ -79,6 +79,12 @@ export default Vue.extend({
   },
   computed: {
     ...mapState(['activeReportIDs']),
+    state(): string {
+      if (this.reportInfo == undefined) return '';
+      else {
+        return this.reportInfo.state;
+      }
+    },
     airportMap(): Map<number, Airport> {
       let ret = new Map<number, Airport>();
       for (let airport of this.airportList) {
