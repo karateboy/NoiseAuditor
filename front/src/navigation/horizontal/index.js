@@ -11,7 +11,7 @@ export default [
     route: 'data-management',
   },
   {
-    title: '資料匯入進度',
+    title: '資料處理進度',
     icon: 'CoffeeIcon',
     route: 'import-progress',
   },
@@ -21,9 +21,9 @@ export default [
     route: 'airport-config',
   },
   {
-    title: '報告匯出',
+    title: '報告管理',
     icon: 'DownloadIcon',
-    route: 'export-report',
+    route: 'report-management',
   },
   {
     title: '系統管理',

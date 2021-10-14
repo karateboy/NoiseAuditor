@@ -15,7 +15,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp, configuration: Configuration,
-                              groupOp: GroupOp, airportOp: AirportOp,
+                              groupOp: GroupOp, airportOp: AirportOp, sysConfig: SysConfig,
                                airportInfoOp: AirportInfoOp, actorSystem: ActorSystem, reportInfoOp: ReportInfoOp,
                                mongoDB: MongoDB) extends Controller {
 
@@ -186,7 +186,9 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
         val downloadFolder = config.getString("downloadFolder").get
         val dataFile = dataFileOpt.get
         val airportInfoID = AirportInfoID(year, quarter, airportID)
-        for (reportInfoList <- reportInfoOp.getReportInfoList(airportInfoID)) yield {
+        for {reportInfoList <- reportInfoOp.getReportInfoList(airportInfoID)
+             reportTolerance <- ReportTolerance.get(sysConfig)
+             } yield {
           val ver = if (reportInfoList.isEmpty)
             1
           else
@@ -197,7 +199,8 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
           val reportInfo = ReportInfo(airportInfoID = airportInfoID, version = ver)
           reportInfoOp.upsertReportInfo(reportInfo)
           val actorName = ReportImporter.start(dataFile = file, airportInfoOp= airportInfoOp, reportInfo = reportInfo,
-            reportInfoOp, ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB))(actorSystem)
+            reportInfoOp, ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB),
+            reportTolerance)(actorSystem)
           Ok(Json.obj("actorName" -> actorName, "version"->ver))
         }
       }
@@ -228,5 +231,35 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
       Ok(Json.toJson((ret)))
   }
 
+  def reauditReport()= Security.Authenticated.async(BodyParsers.parse.json) {
+    implicit request =>
+      implicit val r1 = Json.reads[AirportInfoID]
+      implicit val read = Json.reads[ReportID]
+      val ret = request.body.validate[ReportID]
+
+      ret.fold(
+
+        error => {
+          Future{
+            Logger.error(JsError.toJson(error).toString())
+            BadRequest(Json.obj("ok" -> false, "msg" -> JsError.toJson(error).toString()))
+          }
+        },
+        id => {
+          for{reportInfo <- reportInfoOp.get(id)
+              reportTolerance <- ReportTolerance.get(sysConfig)
+              } yield{
+            if(reportInfo.nonEmpty){
+              ReportImporter.reaudit(airportInfoOp, reportInfo(0),
+                reportInfoOp, ReportRecord.getReportRecordOp(reportInfo(0))(mongoDB = mongoDB),
+                reportTolerance)(actorSystem)
+
+              Ok(Json.obj("ok" -> true))
+            }else
+              NotAcceptable("No such report!")
+          }
+
+        })
+  }
   case class EditData(id: String, data: String)
 }

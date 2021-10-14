@@ -59,3 +59,5 @@ POST    /ReportData/:airportID/:year/:quarter                        controllers
 GET     /UploadProgress/:actorName                                   controllers.HomeController.getUploadProgress(actorName)
 GET     /ReportIDs                                                   controllers.HomeController.getReportInfoIdList
 GET     /ReportInfo/:year/:quarter/:airportID/:version               controllers.HomeController.getReportInfo(year:Int, quarter:Int, airportID:Int, version:Int)
+
+POST    /Reaudit                controllers.HomeController.reauditReport()

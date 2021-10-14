@@ -21,7 +21,7 @@
         </b-row>
       </b-form>
     </b-card>
-    <b-card v-if="reportInfo" title="報表處理進度">
+    <b-card v-if="reportInfo" title="報表進度">
       <b-form @submit.prevent>
         <b-row>
           <b-col cols="12">
@@ -29,23 +29,20 @@
               <b-input :value="state" readonly />
             </b-form-group>
           </b-col>
-          <b-col v-for="task in reportTasks" :key="task.name" cols="12">
-            <h5>{{ task.name }}</h5>
-            <b-progress :max="task.total" height="2rem" class="m-1">
-              <b-progress-bar :value="task.current" variant="success">
-                <span>
-                  <strong
-                    >{{ task.current }} /
-                    {{
-                      `${task.total}(${(
-                        (task.current / task.total) *
-                        100
-                      ).toFixed(0)}%)`
-                    }}</strong
-                  ></span
-                >
-              </b-progress-bar>
-            </b-progress>
+          <b-col offset="2" cols="12">
+            <b-button
+              class="mr-2"
+              variant="outline-primary"
+              :disabled="!canReaudit"
+              @click="reauditReport"
+              >重新稽核</b-button
+            >
+            <b-button class="mr-2" variant="outline-primary"
+              >下載資料格式錯誤表</b-button
+            >
+            <b-button class="mr-2" variant="outline-primary"
+              >下載稽核報表</b-button
+            >
           </b-col>
         </b-row>
       </b-form>
@@ -55,9 +52,11 @@
 <script lang="ts">
 import Vue from 'vue';
 import { mapState } from 'vuex';
-import { ReportID } from '../store/types';
+import { AirportInfoID, ReportID } from '../store/types';
 import { Airport, ReportInfo, SubTask } from './types';
 import axios from 'axios';
+import Swal from 'sweetalert2';
+import { mapMutations } from 'vuex';
 
 interface ReportDesc {
   _id: ReportID;
@@ -74,7 +73,6 @@ export default Vue.extend({
         _id,
       },
       airportList: Array<Airport>(),
-      timerID: 0,
       reportInfo,
       reportIdList,
     };
@@ -119,24 +117,24 @@ export default Vue.extend({
         return ret;
       } else return Array<SubTask>();
     },
+    canReaudit(): boolean {
+      if (this.reportInfo == undefined) return false;
+
+      if (this.reportInfo.state === '稽核完成') return true;
+      else return false;
+    },
+  },
+  watch: {
+    'form._id': function () {
+      this.getReportInfo();
+    },
   },
   async mounted() {
     await this.getAirportList();
     await this.getReportInfoIdList();
-    let activeReportIDs = this.activeReportIDs as Array<ReportID>;
-    if (activeReportIDs.length !== 0)
-      this.form._id = activeReportIDs[activeReportIDs.length - 1];
-
-    this.getReportInfo();
-    let me = this;
-    this.timerID = setInterval(() => {
-      me.getReportInfo();
-    }, 3000);
-  },
-  beforeDestroy() {
-    clearInterval(this.timerID);
   },
   methods: {
+    ...mapMutations(['setLoading', 'setActiveReportIDs']),
     async getAirportList() {
       try {
         const res = await axios.get('/Airports');
@@ -171,6 +169,35 @@ export default Vue.extend({
         const res = await axios.get('/ReportIDs');
         if (res.status === 200) {
           this.reportIdList = res.data;
+        }
+      } catch (err) {
+        throw new Error(err);
+      }
+    },
+    async reauditReport() {
+      try {
+        if (this.form._id === undefined) return;
+
+        let reportID = this.form._id;
+        let airportInfoID = reportID.airpotInfoID as AirportInfoID;
+        console.log(airportInfoID);
+        const res = await axios.post('/Reaudit', this.form._id);
+        if (res.status == 200) {
+          let airportName = '';
+          let airport = this.airportList.find(
+            p => p._id == airportInfoID.airportID,
+          );
+          if (airport) airportName = airport.name;
+
+          let text = `重新稽核${airportName}${airportInfoID.year}年${airportInfoID.quarter}第${reportID.version}版監測資料`;
+          Swal.fire({
+            title: '成功',
+            text,
+            icon: 'success',
+            confirmButtonText: '確定',
+          });
+          this.setActiveReportIDs([reportID]);
+          this.$router.push({ name: 'import-progress' });
         }
       } catch (err) {
         throw new Error(err);

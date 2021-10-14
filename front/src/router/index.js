@@ -36,7 +36,15 @@ const router = new VueRouter({
       name: 'import-progress',
       component: () => import('@/views/ReportInfo.vue'),
       meta: {
-        pageTitle: '資料匯入進度',
+        pageTitle: '資料處理進度',
+      },
+    },
+    {
+      path: '/report-management',
+      name: 'report-management',
+      component: () => import('@/views/ReportManagement.vue'),
+      meta: {
+        pageTitle: '報表匯出',
       },
     },
     {

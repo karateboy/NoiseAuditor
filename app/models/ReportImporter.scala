@@ -20,11 +20,25 @@ object ReportImporter {
   var n = 0
   private var actorRefMap = Map.empty[String, ActorRef]
 
-  def start(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp)(implicit actorSystem: ActorSystem) = {
+  def start(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo,
+            reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp,
+            reportTolerance: ReportTolerance)(implicit actorSystem: ActorSystem) = {
     val name = getName
     val actorRef = actorSystem.actorOf(ReportImporter.props(dataFile = dataFile, airportInfoOp = airportInfoOp,
-      reportInfo = reportInfo, reportInfoOp, reportRecordOp), name)
+      reportInfo = reportInfo, reportInfoOp, reportRecordOp, reportTolerance = reportTolerance), name)
+    actorRef ! ExtractZipFile
     actorRefMap = actorRefMap + (name -> actorRef)
+    name
+  }
+
+  def reaudit(airportInfoOp: AirportInfoOp, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp,
+              reportRecordOp: ReportRecordOp, reportTolerance: ReportTolerance)
+             (implicit actorSystem: ActorSystem) = {
+    val name = getName
+    val actorRef = actorSystem.actorOf(ReportImporter.props(dataFile = new File(""), airportInfoOp = airportInfoOp,
+      reportInfo = reportInfo, reportInfoOp, reportRecordOp, reportTolerance = reportTolerance), name)
+    actorRefMap = actorRefMap + (name -> actorRef)
+    actorRef ! Reaudit
     name
   }
 
@@ -33,8 +47,11 @@ object ReportImporter {
     s"dataImporter${n}"
   }
 
-  def props(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp) =
-    Props(classOf[ReportImporter], dataFile, airportInfoOp, reportInfo, reportInfoOp, reportRecordOp)
+  def props(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo,
+            reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp,
+            reportTolerance: ReportTolerance) =
+    Props(classOf[ReportImporter], dataFile, airportInfoOp, reportInfo,
+      reportInfoOp, reportRecordOp, reportTolerance)
 
   def finish(actorName: String) = {
     actorRefMap = actorRefMap.filter(p => {
@@ -85,16 +102,35 @@ object ReportImporter {
   case object TaskComplete
 
   case object AuditReport
+
+  case object Reaudit
+
+  case object AuditSecData
+
+  case object AdutiEventData
+
+  case object AuditHourData
+
+  case object AuditDayData
+
+  case object AuditMonthData
+
+  case object AuditQuarterData
 }
 
 class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
-                     reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp) extends Actor {
+                     reportInfo: ReportInfo, reportInfoOp: ReportInfoOp,
+                     reportRecordOp: ReportRecordOp, reportTolerance: ReportTolerance) extends Actor {
 
   import ReportImporter._
 
-  self ! ExtractZipFile
-
   override def receive: Receive = decompressPhase
+
+  var terminalMap = Map.empty[Int, String]
+
+  for (tMap <- getTerminalMap()) {
+    terminalMap = tMap
+  }
 
   def decompressPhase(): Receive = {
     case ExtractZipFile =>
@@ -119,8 +155,8 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
               reportInfo.state = message
               dataFile.delete()
               val f = getTerminalMap()
-              for(map<-f){
-                context become importDbfPhase(parentPath, 0, map)
+              for (map <- f) {
+                context become importDbfPhase(parentPath, 0)
                 finish(context.self.path.name)
                 self ! ImportDatabase
               }
@@ -132,6 +168,11 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
           }
         }
       }
+
+    case Reaudit =>
+      context become auditReportPhase(0)
+      reportInfoOp.clearAllSubTasks(reportInfo._id)
+      self ! AuditReport
 
     case TaskAbort(reason) =>
       reportInfo.state = "失敗"
@@ -195,11 +236,11 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                     try {
                       secRecords = secRecords :+ SecRecord(start.plusSeconds(i).toDate(), rowObjects(i + 5).asInstanceOf[java.math.BigDecimal].doubleValue())
                     } catch {
-                      case _:Throwable =>
+                      case _: Throwable =>
                         val dfe = DataFormatError(fileName = path.toFile.getName, terminal = mntName, time = s"${start.plusSeconds(i).toString("yyyy/MM/dd HH:mm:ss")}",
                           dataType = "每秒噪音監測資料",
                           fieldName = s"SL$i", errorInfo = "無資料", value = "")
-                        dfeList = dfeList:+(dfe)
+                        dfeList = dfeList :+ (dfe)
                     }
                   }
                   val record = MinRecord(RecordID(start.toDate, mntNumber, recordType.toString), secRecords)
@@ -208,7 +249,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                   case ex: Exception =>
                     val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
                       fieldName = "", errorInfo = "檔案錯誤", value = "")
-                    dfeList = dfeList:+(dfe)
+                    dfeList = dfeList :+ (dfe)
                 }
               }
             } while (rowObjects != null)
@@ -219,13 +260,13 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
             } else {
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
                 fieldName = "", errorInfo = "無資料", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
             }
           } catch {
             case ex: Exception =>
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
                 fieldName = "", errorInfo = "無法讀取", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
@@ -301,7 +342,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                     val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                       dataType = s"$relativePath",
                       fieldName = "", errorInfo = "資料格式錯誤", value = ex.getMessage)
-                    dfeList = dfeList:+(dfe)
+                    dfeList = dfeList :+ (dfe)
                     Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
@@ -314,14 +355,14 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                 dataType = s"$relativePath",
                 fieldName = "", errorInfo = "無資料", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
             }
           } catch {
             case ex: Exception =>
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                 dataType = s"$relativePath",
                 fieldName = "", errorInfo = "無法讀取資料", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
@@ -383,7 +424,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                     val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                       dataType = s"$relativePath",
                       fieldName = "", errorInfo = "檔案錯誤", value = ex.getMessage)
-                    dfeList = dfeList:+(dfe)
+                    dfeList = dfeList :+ (dfe)
                 }
               }
             } while (rowObjects != null)
@@ -394,14 +435,14 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
             } else {
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
                 fieldName = "", errorInfo = "無資料", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
             }
           } catch {
             case ex: Exception =>
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "", dataType = "",
                 fieldName = "", errorInfo = "無法讀取", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
           } finally {
             DBFUtils.close(reader)
           }
@@ -474,32 +515,32 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                     val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                       dataType = s"$relativePath",
                       fieldName = "", errorInfo = "格式錯誤", value = ex.getMessage)
-                    dfeList = dfeList:+(dfe)
+                    dfeList = dfeList :+ (dfe)
                     Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
             } while (rowObjects != null)
             if (recordList.nonEmpty) {
               val f = collection.insertMany(recordList).toFuture()
-              f onFailure({
-                case _:Throwable=>
+              f onFailure ({
+                case _: Throwable =>
                   val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                     dataType = s"$relativePath",
                     fieldName = "", errorInfo = "出現重複事件", value = "")
-                  dfeList = dfeList:+(dfe)
+                  dfeList = dfeList :+ (dfe)
               })
             } else {
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                 dataType = s"$relativePath",
                 fieldName = "", errorInfo = "檔案無資料", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
             }
           } catch {
             case ex: Exception =>
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                 dataType = s"$relativePath",
                 fieldName = "", errorInfo = "無法讀取檔案", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
@@ -558,7 +599,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                     val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                       dataType = s"$relativePath",
                       fieldName = "", errorInfo = "資料格式錯誤", value = ex.getMessage)
-                    dfeList = dfeList:+(dfe)
+                    dfeList = dfeList :+ (dfe)
                     Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
@@ -571,14 +612,14 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                 dataType = s"$relativePath",
                 fieldName = "", errorInfo = "檔案無資料", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
             }
           } catch {
             case ex: Exception =>
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
                 dataType = s"$relativePath",
                 fieldName = "", errorInfo = "檔案無法讀取", value = "")
-              dfeList = dfeList:+(dfe)
+              dfeList = dfeList :+ (dfe)
               Logger.error(s"無法匯入 ${path.toFile.getPath}", ex)
           } finally {
             DBFUtils.close(reader)
@@ -603,7 +644,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
     }
   }
 
-  def importDbfPhase(mainFolder: String, importTasks: Int, terminalMap: Map[Int, String]): Receive = {
+  def importDbfPhase(mainFolder: String, importTasks: Int): Receive = {
 
     case ImportDatabase =>
       reportInfoOp.updateState(reportInfo._id, "匯入資料庫")
@@ -620,54 +661,54 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       self ! ImportDailyFlight
 
     case ImportSecondWind =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importSecData(mainFolder, "每秒風速監測資料")
 
     case ImportSecondNoise =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importSecData(mainFolder, "每秒噪音監測資料")
 
     case ImportHourlyNoise =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importNoiseData(mainFolder, "每小時噪音監測資料", ReportRecord.Hour)
 
     case ImportDailyNoise =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importNoiseData(mainFolder, "每日噪音監測資料", ReportRecord.Day)
 
     case ImportMonthlyNoise =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importNoiseData(mainFolder, "每月噪音監測資料", ReportRecord.Month)
 
     case ImportQuarterNoise =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importNoiseData(mainFolder, "每季噪音監測資料", ReportRecord.Quarter)
 
     case ImportYearlyNoise =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importNoiseData(mainFolder, "一年噪音監測資料", ReportRecord.Year)
 
     case ImportHourlyWeather =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importWindHourData(mainFolder, "每小時氣象噪音監測資料")
 
     case ImportNoiseEvent =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importEventData(mainFolder, "噪音事件監測資料", reportRecordOp.getEventCollection)
 
     case ImportTestNoiseEvent =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importEventData(mainFolder, "試車噪音監測資料", reportRecordOp.getTestEventCollection)
 
     case ImportDailyFlight =>
-      context become importDbfPhase(mainFolder, importTasks + 1,  terminalMap)
+      context become importDbfPhase(mainFolder, importTasks + 1)
       importFlightData(mainFolder, "每日飛航監測資料")
 
     case TaskComplete =>
       if (importTasks - 1 != 0)
-        context become importDbfPhase(mainFolder, importTasks - 1,  terminalMap)
+        context become importDbfPhase(mainFolder, importTasks - 1)
       else {
-        context become auditReportPhase(mainFolder, 0)
+        context become auditReportPhase(0)
         reportInfoOp.clearAllSubTasks(reportInfo._id)
         FileUtils.deleteDirectory(new File(mainFolder))
         self ! AuditReport
@@ -680,14 +721,49 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       self ! PoisonPill
   }
 
-  def auditReportPhase(mainFolder: String, auditTasks: Int): Receive = {
+  import org.mongodb.scala.model._
+
+  def auditSecData(): Unit = {
+
+    import com.github.nscala_time.time.Imports._
+    val start = new LocalDateTime(reportInfo.year + 1911,
+      (reportInfo.quarter - 1) * 3 + 1, 1, 0, 0)
+    val end = start.plusMonths(3)
+    val days = new Period(start, end).getDays
+    var dayList: List[LocalDateTime] = List.empty[LocalDateTime]
+    var current = start
+    do{
+      dayList = dayList:+(current)
+      current = current.plusDays(1)
+    }while(current < end)
+
+    val subTask = SubTask(s"稽核每秒資料", 0, terminalMap.size * days)
+    reportInfoOp.addSubTask(reportInfo._id, subTask)
+    for {mntNum <- terminalMap.keys
+          day<- dayList} {
+        subTask.current = subTask.current + 1
+        reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
+      // val dayData = reportRecordOp.getMinCollection(Noise).find()
+    }
+    self ! TaskComplete
+  }
+
+  def auditReportPhase(auditTasks: Int): Receive = {
     case AuditReport =>
       reportInfoOp.updateState(reportInfo._id, "產出稽核報告中")
-      context become auditReportPhase(mainFolder, 1)
-      self ! TaskComplete
+      self ! AuditSecData
+
+    case AuditSecData =>
+      context become auditReportPhase(auditTasks + 1)
+      Future {
+        blocking {
+          auditSecData()
+        }
+      }
+
     case TaskComplete =>
-      if (auditTasks - 1 != 0)
-        context become auditReportPhase(mainFolder, auditTasks - 1)
+      if (auditTasks - 1 > 0)
+        context become auditReportPhase(auditTasks - 1)
       else {
         reportInfoOp.updateState(reportInfo._id, "稽核完成")
         reportInfoOp.clearAllSubTasks(reportInfo._id)

@@ -100,14 +100,12 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
     f
   }
 
-  def clear()={
+  def clearAll()={
     val f = collection.find(Filters.exists("_id")).toFuture()
     for(ret<-f){
       ret foreach { r => r.removeCollection(mongoDB)}
     }
   }
-  // FIXME use during test
-  clear()
 
   def addSubTask(_id:ReportID, task:SubTask): Future[UpdateResult] = {
     val updates = Updates.addToSet("tasks", task)

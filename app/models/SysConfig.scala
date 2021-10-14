@@ -1,26 +1,32 @@
 package models
-import play.api.libs.json._
+
 import models.ModelHelper._
+import org.mongodb.scala.bson._
+import org.mongodb.scala.model._
+import play.api.libs.json._
+
+import javax.inject._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.language.implicitConversions
-import org.mongodb.scala.model._
-import org.mongodb.scala.bson._
-import javax.inject._
 
 @Singleton
-class SysConfig @Inject()(mongoDB: MongoDB){
+class SysConfig @Inject()(mongoDB: MongoDB) {
   val ColName = "sysConfig"
   val collection = mongoDB.database.getCollection(ColName)
 
   val valueKey = "value"
   val MonitorTypeVer = "Version"
+  val ReportToleranceKey = "ReportTolerance"
 
+  import ReportTolerance._
 
   val defaultConfig = Map(
-    MonitorTypeVer -> Document(valueKey -> 1))
+    MonitorTypeVer -> Document(valueKey -> 1),
+    ReportToleranceKey -> Document(valueKey -> Json.toJson(ReportTolerance.default).toString())
+  )
 
   def init() {
-    for(colNames <- mongoDB.database.listCollectionNames().toFuture()) {
+    for (colNames <- mongoDB.database.listCollectionNames().toFuture()) {
       if (!colNames.contains(ColName)) {
         val f = mongoDB.database.createCollection(ColName).toFuture()
         f.onFailure(errorHandler)
@@ -46,6 +52,7 @@ class SysConfig @Inject()(mongoDB: MongoDB){
     val f = Future.sequence(List(f1, f2))
     waitReadyResult(f)
   }
+
   init
 
   def upsert(_id: String, doc: Document) = {

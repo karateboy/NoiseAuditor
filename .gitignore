@@ -25,3 +25,4 @@ server.pid
 .tmpBin
 parsed.list
 /vuexy-starter-kit/yarn.lock
+/front/yarn.lock
