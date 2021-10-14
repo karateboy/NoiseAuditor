@@ -12,6 +12,7 @@ import play.api._
 
 import java.io.{BufferedInputStream, File}
 import java.nio.file.{Files, Path, Paths}
+import java.util.Date
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
@@ -739,13 +740,39 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
 
     val subTask = SubTask(s"稽核每秒資料", 0, terminalMap.size * days)
     reportInfoOp.addSubTask(reportInfo._id, subTask)
+    import scala.collection.mutable.Map
+
+    def auditDay(mntNum:Int, day:LocalDateTime, dayMap:Map[Date, MinRecord]): Unit ={
+      val dayEnd = day.plusDays(1)
+      var current = day
+      do{
+        if(!dayMap.contains(current.toDate)){
+          val mntName = terminalMap(mntNum)
+          val msg = s"${mntName} ${current.toString("yyyy/MM/dd HH:mm")}缺少資料"
+        }
+        current.plusMinutes(1)
+      }while(current < dayEnd)
+      subTask.current = subTask.current + 1
+      reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
+      if(subTask.current == subTask.total)
+        self ! TaskComplete
+    }
     for {mntNum <- terminalMap.keys
           day<- dayList} {
-        subTask.current = subTask.current + 1
-        reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
-      // val dayData = reportRecordOp.getMinCollection(Noise).find()
+      import org.mongodb.scala.model.Filters._
+      val dayEnd = day.plusDays(1)
+      val filter = Filters.and(equal("_id.terminalID", mntNum),
+        gte("_id.time", day.toDate), lt("_id.time", dayEnd.toDate()))
+      val f = reportRecordOp.getMinCollection(Noise).find(filter).toFuture()
+
+      for{dayData: Seq[MinRecord] <-f
+          minRecord <- dayData
+          }{
+        val dataMap = Map.empty[Date, MinRecord]
+        dataMap.update(minRecord._id.time, minRecord)
+        auditDay(mntNum, day, dataMap)
+      }
     }
-    self ! TaskComplete
   }
 
   def auditReportPhase(auditTasks: Int): Receive = {

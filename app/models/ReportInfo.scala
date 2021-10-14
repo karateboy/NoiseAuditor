@@ -14,6 +14,7 @@ import org.mongodb.scala.result.UpdateResult
 
 import java.time.LocalTime
 
+case class AuditLog(mntNum:Int, msg:String)
 case class DataFormatError(fileName:String, terminal: String, time:String, dataType:String,
                            fieldName:String, errorInfo:String, value:String)
 case class SubTask(name:String, var current:Int, total:Int)
@@ -22,7 +23,7 @@ case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
                       var state:String = "上傳檔案中",
                       var unableAuditReason: Seq[String] = Seq.empty[String],
                       var dataFormatErrorList: Seq[DataFormatError] = Seq.empty[DataFormatError],
-                      var auditLog:Seq[String] = Seq.empty[String],
+                      var auditLog:Seq[AuditLog] = Seq.empty[AuditLog],
                       tasks: Seq[SubTask] = Seq.empty[SubTask]){
   val getCollectionName = s"Y${year}Q${quarter}airport${_id.airpotInfoID.airportID}v${_id.version}"
 
