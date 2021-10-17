@@ -124,4 +124,92 @@ class ExcelUtility @Inject()
 
     finishExcel(reportFilePath, pkg, wb)
   }
+
+  def getAuditReports(auditLog: AuditLog, terminalMap: Map[Int, String]) ={
+    val (reportFilePath, pkg, wb) = prepareTemplate("auditReport.xlsx")
+    val format = wb.createDataFormat()
+    val year = auditLog._id.reportID.airpotInfoID.year + 1911
+    val quarter = auditLog._id.reportID.airpotInfoID.quarter
+    val start = new LocalDate(year, 1 + 3* quarter, 1).toLocalDateTime(LocalTime.MIDNIGHT)
+    val end = start.plusMonths(3).minusSeconds(1)
+    val mntNum = auditLog._id.mntNum
+    def fillSecAuditReport(): Unit ={
+      val sheet = wb.getSheetAt(0)
+      // Just take first 500
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseSec).take(500)
+      sheet.getRow(0).getCell(0)
+        .setCellValue(s"稽核資料：${terminalMap(mntNum)}每秒噪音監測資料")
+
+      sheet.getRow(1).getCell(0)
+        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59的每秒資料")
+
+      for((log, idx)<- logs.zipWithIndex){
+        var cell = sheet.createRow(4 + idx).createCell(0)
+        cell.setCellValue(log.time)
+        cell = sheet.createRow(4 + idx).createCell(1)
+        cell.setCellValue(log.msg)
+      }
+    }
+
+    def fillNoiseEventReport(): Unit ={
+      val sheet = wb.getSheetAt(1)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseEvent).take(500)
+      sheet.getRow(0).getCell(0)
+        .setCellValue(s"稽核資料：${terminalMap(mntNum)}事件監測資料")
+
+      sheet.getRow(1).getCell(0)
+        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59的事件監測資料")
+
+      for((log, idx)<- logs.zipWithIndex){
+        var cell = sheet.createRow(4 + idx).createCell(0)
+        cell.setCellValue(log.time)
+        cell = sheet.createRow(4 + idx).createCell(1)
+        cell.setCellValue(log.msg)
+      }
+    }
+
+    def fillNoiseHourReport(): Unit ={
+      val sheet = wb.getSheetAt(2)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseHour)
+      sheet.getRow(0).getCell(0)
+        .setCellValue(s"稽核資料：${terminalMap(mntNum)}每小時資料")
+
+      sheet.getRow(1).getCell(0)
+        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每小時資料")
+
+      for((log, idx)<- logs.zipWithIndex){
+        var cell = sheet.createRow(16 + idx).createCell(0)
+        cell.setCellValue(log.time)
+        cell = sheet.createRow(16 + idx).createCell(1)
+        cell.setCellValue(log.msg)
+      }
+    }
+
+    def fillNoiseDayReport(): Unit ={
+      val sheet = wb.getSheetAt(3)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseDay)
+      sheet.getRow(0).getCell(0)
+        .setCellValue(s"稽核資料：${terminalMap(mntNum)}每日噪音監測資料")
+
+      sheet.getRow(1).getCell(0)
+        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每小時資料")
+
+      for((log, idx)<- logs.zipWithIndex){
+        var cell = sheet.createRow(16 + idx).createCell(0)
+        cell.setCellValue(log.time)
+        cell = sheet.createRow(16 + idx).createCell(1)
+        cell.setCellValue(log.msg)
+      }
+    }
+
+    fillSecAuditReport()
+    fillNoiseEventReport()
+    fillNoiseHourReport()
+    fillNoiseDayReport()
+
+    val result =finishExcel(reportFilePath, pkg, wb)
+    val targetFile = new File(result.toPath.getParent + s"/${terminalMap(mntNum)}.xlsx")
+    result.renameTo(targetFile)
+    targetFile
+  }
 }

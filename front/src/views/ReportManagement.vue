@@ -37,10 +37,13 @@
               @click="reauditReport"
               >重新稽核</b-button
             >
-            <b-button class="mr-2" variant="outline-primary"
+            <b-button class="mr-2" variant="outline-primary" disabled
               >下載資料格式錯誤表</b-button
             >
-            <b-button class="mr-2" variant="outline-primary"
+            <b-button
+              class="mr-2"
+              variant="outline-primary"
+              @click="downloadReport"
               >下載稽核報表</b-button
             >
           </b-col>
@@ -206,6 +209,16 @@ export default Vue.extend({
       } catch (err) {
         throw new Error(err);
       }
+    },
+    async downloadReport() {
+      const baseUrl =
+        process.env.NODE_ENV === 'development' ? 'http://localhost:9000/' : '';
+      const year = this.form._id?.airpotInfoID.year;
+      const quarter = this.form._id?.airpotInfoID.quarter;
+      const airportID = this.form._id?.airpotInfoID.airportID;
+      const version = this.form._id?.version;
+      const url = `${baseUrl}AuditReport/${year}/${quarter}/${airportID}/${version}`;
+      window.open(url);
     },
   },
 });

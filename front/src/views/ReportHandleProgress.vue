@@ -162,6 +162,12 @@ export default Vue.extend({
           const ret = res.data as Array<ReportInfo>;
           this.reportInfo = ret[0];
         }
+        if (
+          this.reportInfo?.tasks.length == 0 &&
+          this.reportInfo.state == '稽核完成'
+        ) {
+          this.$router.push({ name: 'report-management' });
+        }
       } catch (err) {
         throw new Error(err);
       }

@@ -60,7 +60,6 @@ class AuditLogOp @Inject()(mongoDB: MongoDB){
 
   def appendLog(_id:AuditLogID, logs:Seq[LogEntry])={
     // FIXME only log day
-    val filted = logs.filter(_.dataType == AuditLog.DataTypeNoiseDay)
     val update = Updates.pushEach("logs", logs:_*)
     val f = collection.updateOne(Filters.equal("_id", _id), update).toFuture()
     f onFailure(errorHandler())

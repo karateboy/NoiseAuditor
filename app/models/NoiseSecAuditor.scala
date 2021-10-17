@@ -3,7 +3,6 @@ package models
 import akka.actor.{Actor, Props}
 import com.github.nscala_time
 import com.github.nscala_time.time
-import com.github.nscala_time.time.Imports
 import com.github.nscala_time.time.Imports._
 import models.ModelHelper._
 import models.ReportRecord.Noise
@@ -70,13 +69,15 @@ object NoiseSecAuditor {
   case object AuditFinished
 }
 
-case class VerifiedHourRecord(hour: DateTime, totalLeq: Double, eventLeq: Double, totalLdn: Double, eventLdn: Double)
+case class VerifiedHourRecord(hour: DateTime, totalLeq: Double, eventLeq: Double, totalLdn: Double, eventLdn: Double,
+                              numEvent: Int, duration: Int, backLeq: Double, backLdn: Double, eventSEL:Double)
+
 class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp,
                       reportTolerance: ReportTolerance, auditLogOp: AuditLogOp, taskName: String,
                       mntNum: Int, terminalMap: Map[Int, String], start: DateTime, end: DateTime) extends Actor {
 
   import NoiseSecAuditor._
-  
+
   self ! StartAudit
 
   import scala.collection.mutable.Map
@@ -210,7 +211,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
 
       val eventLeq = 10 * Math.log10(events.map(evt => Math.pow(10, evt.eventLeq / 10) * evt.duration).sum / hourData.activity)
 
-      // val eventSEL = eventLeq + 10 * Math.log10(hourData.activity)
+      val eventSEL = eventLeq + 10 * Math.log10(hourData.activity)
 
       val backLeq = 10 * Math.log10(Math.pow(10, totalLeq / 10) - Math.pow(10, eventLeq / 10))
 
@@ -231,21 +232,25 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
 
       val numEvent = events.size
 
+      val duration = events.map(_.duration).sum
       logIfWrong(hourData.backLdn, backLdn, reportTolerance.backLdn, "BACK_Ldn=%.1f ")
       logIfWrong(hourData.backLeq, backLeq, reportTolerance.backLeq, "BACK_Leq=%.1f ")
       logIfWrong(hourData.eventLeq, eventLeq, reportTolerance.eventLeg, "EVENT_Leq=%.1f ")
       logIfWrong(hourData.eventLdn, eventLdn, reportTolerance.eventLdn, "EVENT_Ldn=%.1f ")
       logIfWrong(hourData.totalLdn, totalLdn, reportTolerance.totalLdn, "TOTAL_Ldn=%.1f ")
       logIfWrong(hourData.numEvent, numEvent, reportTolerance.numOfEvent, "NUM_OF_EVENT=%.0f ")
-      //logIfWrong(hourData.totalLeq, totalLeq, reportTolerance.totalLeq, "TOTAL_Leq=%.1f ")
-      //logIfWrong(hourData.totalEvent, eventSEL, reportTolerance.totalEventSel, "TOTAL_EVENT_SEL=%.1f ")
+      logIfWrong(hourData.totalLeq, totalLeq, reportTolerance.totalLeq, "TOTAL_Leq=%.1f ")
+      logIfWrong(hourData.totalEvent, eventSEL, reportTolerance.totalEventSel, "TOTAL_EVENT_SEL=%.1f ")
+      logIfWrong(hourData.duration, duration, reportTolerance.duration, "DURATION=%.0f")
 
       if (msg1 != msg1Header) {
         val logs = Seq(LogEntry(mntNum, hour, AuditLog.DataTypeNoiseHour, msg1),
           LogEntry(mntNum, hour, AuditLog.DataTypeNoiseHour, msg2))
         auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum), logs)
       }
-      Some(VerifiedHourRecord(hour = hour, totalLeq = totalLeq, totalLdn = totalLdn, eventLeq = eventLeq, eventLdn = eventLdn))
+      Some(VerifiedHourRecord(hour = hour, totalLeq = totalLeq, totalLdn = totalLdn, eventLeq = eventLeq,
+        eventLdn = eventLdn, numEvent = numEvent, duration = duration, backLeq = backLeq, backLdn = backLdn,
+        eventSEL = eventSEL))
     }
 
     val ret: Iterator[Option[VerifiedHourRecord]] =
@@ -269,8 +274,8 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     ret.toList.flatten.map(v => v.hour -> v).toMap
   }
 
-  def checkDayData(thisDay:DateTime, dayData:Seq[NoiseRecord], verifiedHourMap: Map[DateTime, VerifiedHourRecord]){
-    if(dayData.isEmpty){
+  def checkDayData(thisDay: DateTime, dayData: Seq[NoiseRecord], verifiedHourMap: Map[DateTime, VerifiedHourRecord]) {
+    if (dayData.isEmpty) {
       val msg = s"缺少日資料"
       auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum),
         Seq(LogEntry(mntNum, thisDay, AuditLog.DataTypeNoiseDay, msg)))
@@ -282,6 +287,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     val msg2Header = "稽核資料: "
     var msg1 = msg1Header
     var msg2 = msg2Header
+
     def logIfWrong(v: Double, auditV: Double, error: Double, msgTag: String) = {
       if (v >= auditV + error || v < auditV - error) {
         msg1 = msg1 + msgTag.format(v)
@@ -290,24 +296,36 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     }
 
     val verifiedHrList: List[VerifiedHourRecord] = verifiedHourMap.filter(
-      p=>p._1>=thisDay && p._1 < thisDay.plusDays(1)).values.toList
+      p => p._1 >= thisDay && p._1 < thisDay.plusDays(1)).values.toList
 
     val hourCount = verifiedHrList.size
-    val totalLeq = 10*Math.log10(verifiedHrList.map(h=>Math.pow(10, h.totalLeq/10)*3600).sum/(3600*hourCount))
-    val eventLeq = 10*Math.log10(verifiedHrList.map(h=>Math.pow(10, h.eventLeq/10)*3600).sum/(3600*hourCount))
-    val totalLdn = 10*Math.log10(verifiedHrList.map(h=>Math.pow(10, h.totalLdn/10)*3600).sum/(3600*hourCount))
-    val eventLdn = 10*Math.log10(verifiedHrList.map(h=>Math.pow(10, h.eventLdn/10)*3600).sum/(3600*hourCount))
+    val totalLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLeq / 10) * 3600).sum / (3600 * hourCount))
+    val eventLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLeq / 10) * 3600).sum / (3600 * hourCount))
+    val totalLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLdn / 10) * 3600).sum / (3600 * hourCount))
+    val eventLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLdn / 10) * 3600).sum / (3600 * hourCount))
+    val backLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.backLdn / 10) * 3600).sum / (3600 * hourCount))
+    val backLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.backLeq / 10) * 3600).sum / (3600 * hourCount))
+    val eventSEL = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventSEL / 10)).sum)
+    val numEvent = verifiedHrList.map(_.numEvent).sum
+    val duration = verifiedHrList.map(_.duration).sum
 
-    logIfWrong(data.totalLeq, totalLeq, reportTolerance.totalLeq, "TOTAL_Leq=%.1f")
-    logIfWrong(data.eventLeq, eventLeq, reportTolerance.totalLeq, "EVENT_Leq=%.1f")
-    logIfWrong(data.totalLdn, totalLdn, reportTolerance.totalLeq, "TOTAL_Ldn=%.1f")
-    logIfWrong(data.eventLdn, eventLdn, reportTolerance.totalLeq, "EVENT_Ldn=%.1f")
+    logIfWrong(data.backLdn, backLdn, reportTolerance.backLdn, "BACK_Ldn=%.1f ")
+    logIfWrong(data.backLeq, backLeq, reportTolerance.backLeq, "BACK_Leq=%.1f ")
+    logIfWrong(data.eventLeq, eventLeq, reportTolerance.eventLeg, "EVENT_Leq=%.1f ")
+    logIfWrong(data.eventLdn, eventLdn, reportTolerance.eventLdn, "EVENT_Ldn=%.1f ")
+    logIfWrong(data.totalLdn, totalLdn, reportTolerance.totalLdn, "TOTAL_Ldn=%.1f ")
+    logIfWrong(data.numEvent, numEvent, reportTolerance.numOfEvent, "NUM_OF_EVENT=%.0f ")
+    logIfWrong(data.totalLeq, totalLeq, reportTolerance.totalLeq, "TOTAL_Leq=%.1f ")
+    logIfWrong(data.totalEvent, eventSEL, reportTolerance.totalEventSel, "TOTAL_EVENT_SEL=%.1f ")
+    logIfWrong(data.duration, duration, reportTolerance.duration, "DURATION=%.0f")
+
     if (msg1 != msg1Header) {
       val logs = Seq(LogEntry(mntNum, thisDay, AuditLog.DataTypeNoiseDay, msg1),
         LogEntry(mntNum, thisDay, AuditLog.DataTypeNoiseDay, msg2))
       auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum), logs)
     }
   }
+
   override def receive: Receive = auditStateMachine(Map.empty[Date, MinRecord], Map.empty[Date, EventRecord], Map.empty[DateTime, VerifiedHourRecord])
 
   def auditStateMachine(secDataMap: Map[Date, MinRecord], eventMap: Map[Date, EventRecord], verifiedHourMap: Map[DateTime, VerifiedHourRecord]): Receive = {
@@ -340,7 +358,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
           for (minRecord <- data)
             dataMap.update(minRecord._id.time, minRecord)
 
-          //checkSecDataLoss(dt, dataMap)
+          checkSecDataLoss(dt, dataMap)
 
           context become auditStateMachine(dataMap, eventMap, verifiedHourMap)
           self ! GetNoiseEventData(dt)
@@ -354,7 +372,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
 
 
       context become auditStateMachine(secDataMap, evtMap, verifiedHourMap)
-      // checkEventData(dt, secDataMap, data)
+      checkEventData(dt, secDataMap, data)
       self ! GetNoiseHourData(dt)
 
     case GetNoiseHourData(day) =>
@@ -391,11 +409,11 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     case AuditNoiseDayData(thisDay, data) =>
       Future {
         blocking {
-          try{
+          try {
             checkDayData(thisDay, data, verifiedHourMap)
             reportInfoOp.incSubTaskCurrentCount(reportInfo._id, taskName)
-          }catch{
-            case ex:Throwable=>
+          } catch {
+            case ex: Throwable =>
               Logger.error(s"failed to audit day data", ex)
           }
 
