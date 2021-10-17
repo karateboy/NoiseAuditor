@@ -4,6 +4,7 @@ import com.github.nscala_time.time.Imports._
 import org.apache.poi.openxml4j.opc._
 import org.apache.poi.ss.usermodel._
 import org.apache.poi.xssf.usermodel._
+import play.api.Logger
 
 import java.io._
 import java.nio.file.{Files, _}
@@ -144,9 +145,11 @@ class ExcelUtility @Inject()
         .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59的每秒資料")
 
       for((log, idx)<- logs.zipWithIndex){
-        var cell = sheet.createRow(4 + idx).createCell(0)
-        cell.setCellValue(log.time)
-        cell = sheet.createRow(4 + idx).createCell(1)
+        val row = sheet.createRow(4 + idx)
+        var cell = row.createCell(0)
+        val dt = new DateTime(log.time)
+        cell.setCellValue(dt.toString("YYYY/MM/dd HH:mm"))
+        cell = row.createCell(1)
         cell.setCellValue(log.msg)
       }
     }
@@ -161,9 +164,11 @@ class ExcelUtility @Inject()
         .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59的事件監測資料")
 
       for((log, idx)<- logs.zipWithIndex){
-        var cell = sheet.createRow(4 + idx).createCell(0)
-        cell.setCellValue(log.time)
-        cell = sheet.createRow(4 + idx).createCell(1)
+        val row = sheet.createRow(4 + idx)
+        var cell = row.createCell(0)
+        val dt = new DateTime(log.time)
+        cell.setCellValue(dt.toString("YYYY/MM/dd HH:mm"))
+        cell = row.createCell(1)
         cell.setCellValue(log.msg)
       }
     }
@@ -178,9 +183,11 @@ class ExcelUtility @Inject()
         .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每小時資料")
 
       for((log, idx)<- logs.zipWithIndex){
-        var cell = sheet.createRow(16 + idx).createCell(0)
-        cell.setCellValue(log.time)
-        cell = sheet.createRow(16 + idx).createCell(1)
+        val row = sheet.createRow(16 + idx)
+        var cell = row.createCell(0)
+        val dt = new DateTime(log.time)
+        cell.setCellValue(dt.toString("YYYY/MM/dd HH:mm"))
+        cell = row.createCell(1)
         cell.setCellValue(log.msg)
       }
     }
@@ -195,9 +202,11 @@ class ExcelUtility @Inject()
         .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每小時資料")
 
       for((log, idx)<- logs.zipWithIndex){
-        var cell = sheet.createRow(16 + idx).createCell(0)
-        cell.setCellValue(log.time)
-        cell = sheet.createRow(16 + idx).createCell(1)
+        val row = sheet.createRow(16 + idx)
+        var cell = row.createCell(0)
+        val dt = new DateTime(log.time)
+        cell.setCellValue(dt.toString("YYYY/MM/dd"))
+        cell = row.createCell(1)
         cell.setCellValue(log.msg)
       }
     }
@@ -209,7 +218,11 @@ class ExcelUtility @Inject()
 
     val result =finishExcel(reportFilePath, pkg, wb)
     val targetFile = new File(result.toPath.getParent + s"/${terminalMap(mntNum)}.xlsx")
-    result.renameTo(targetFile)
-    targetFile
+
+    if(!result.renameTo(targetFile)) {
+      Logger.error(s"faile to rename to ${targetFile}")
+      result
+    }else
+      targetFile
   }
 }

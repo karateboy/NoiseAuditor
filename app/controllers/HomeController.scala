@@ -295,7 +295,7 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
 
       for(file<-files) {
         val p = Paths.get(targetFolderPath+(s"/${file.getName}"))
-        Files.copy(file.toPath, p, StandardCopyOption.REPLACE_EXISTING)
+        Files.move(file.toPath, p, StandardCopyOption.REPLACE_EXISTING)
       }
 
       val cmd = """"C:/Program Files/7-Zip/7z.exe" a report.zip """ + targetFolderPath.toFile.getAbsolutePath

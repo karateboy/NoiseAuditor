@@ -88,12 +88,12 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
 
     for (now <- minList) {
       if (!dayMap.contains(now.toDate)) {
-        val msg = s"${now.toString("yyyy/MM/dd HH:mm")}缺少資料"
+        val msg = s"缺少資料"
         logList = logList :+ LogEntry(mntNum, now.toDate, AuditLog.DataTypeNoiseSec, msg)
       } else {
         val minData = dayMap(now.toDate)
         if (minData.records.length != 60) {
-          val msg = s"${now.toString("yyyy/MM/dd HH:mm")}缺少資料"
+          val msg = s"缺少資料"
           logList = logList :+ LogEntry(mntNum, now.toDate, AuditLog.DataTypeNoiseSec, msg)
         }
       }
