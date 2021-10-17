@@ -1,21 +1,20 @@
 package models
 
 import akka.actor._
+import com.github.nscala_time.time.{DurationBuilder, StaticDuration}
 import com.linuxense.javadbf.DBFUtils
 import models.ModelHelper._
 import models.ReportRecord.{Noise, RecordPeriod, WindDirection, WindSpeed}
 import org.apache.commons.io.FileUtils
-import org.joda.time.format.DateTimeFormat
-import org.joda.time.{LocalDate, LocalTime}
 import org.mongodb.scala.MongoCollection
 import play.api._
 
 import java.io.{BufferedInputStream, File}
 import java.nio.file.{Files, Path, Paths}
-import java.util.Date
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
+import com.github.nscala_time.time.Imports._
 
 object ReportImporter {
   var n = 0
@@ -23,23 +22,13 @@ object ReportImporter {
 
   def start(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo,
             reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp,
-            reportTolerance: ReportTolerance)(implicit actorSystem: ActorSystem) = {
+            reportTolerance: ReportTolerance, auditLogOp: AuditLogOp)(implicit actorSystem: ActorSystem) = {
     val name = getName
     val actorRef = actorSystem.actorOf(ReportImporter.props(dataFile = dataFile, airportInfoOp = airportInfoOp,
-      reportInfo = reportInfo, reportInfoOp, reportRecordOp, reportTolerance = reportTolerance), name)
+      reportInfo = reportInfo, reportInfoOp, reportRecordOp, reportTolerance = reportTolerance,
+      auditLogOp = auditLogOp), name)
     actorRef ! ExtractZipFile
     actorRefMap = actorRefMap + (name -> actorRef)
-    name
-  }
-
-  def reaudit(airportInfoOp: AirportInfoOp, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp,
-              reportRecordOp: ReportRecordOp, reportTolerance: ReportTolerance)
-             (implicit actorSystem: ActorSystem) = {
-    val name = getName
-    val actorRef = actorSystem.actorOf(ReportImporter.props(dataFile = new File(""), airportInfoOp = airportInfoOp,
-      reportInfo = reportInfo, reportInfoOp, reportRecordOp, reportTolerance = reportTolerance), name)
-    actorRefMap = actorRefMap + (name -> actorRef)
-    actorRef ! Reaudit
     name
   }
 
@@ -50,9 +39,21 @@ object ReportImporter {
 
   def props(dataFile: File, airportInfoOp: AirportInfoOp, reportInfo: ReportInfo,
             reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp,
-            reportTolerance: ReportTolerance) =
+            reportTolerance: ReportTolerance, auditLogOp: AuditLogOp) =
     Props(classOf[ReportImporter], dataFile, airportInfoOp, reportInfo,
-      reportInfoOp, reportRecordOp, reportTolerance)
+      reportInfoOp, reportRecordOp, reportTolerance, auditLogOp)
+
+  def reaudit(airportInfoOp: AirportInfoOp, reportInfo: ReportInfo, reportInfoOp: ReportInfoOp,
+              reportRecordOp: ReportRecordOp, reportTolerance: ReportTolerance, auditLogOp: AuditLogOp)
+             (implicit actorSystem: ActorSystem) = {
+    val name = getName
+    val actorRef = actorSystem.actorOf(ReportImporter.props(dataFile = new File(""), airportInfoOp = airportInfoOp,
+      reportInfo = reportInfo, reportInfoOp, reportRecordOp, reportTolerance = reportTolerance,
+      auditLogOp = auditLogOp), name)
+    actorRefMap = actorRefMap + (name -> actorRef)
+    actorRef ! Reaudit
+    name
+  }
 
   def finish(actorName: String) = {
     actorRefMap = actorRefMap.filter(p => {
@@ -106,8 +107,6 @@ object ReportImporter {
 
   case object Reaudit
 
-  case object AuditSecData
-
   case object AdutiEventData
 
   case object AuditHourData
@@ -121,17 +120,13 @@ object ReportImporter {
 
 class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                      reportInfo: ReportInfo, reportInfoOp: ReportInfoOp,
-                     reportRecordOp: ReportRecordOp, reportTolerance: ReportTolerance) extends Actor {
+                     reportRecordOp: ReportRecordOp, reportTolerance: ReportTolerance, auditLogOp: AuditLogOp) extends Actor {
 
   import ReportImporter._
 
+  val terminalMap: Map[Int, String] = waitReadyResult(getTerminalMap())
+
   override def receive: Receive = decompressPhase
-
-  var terminalMap = Map.empty[Int, String]
-
-  for (tMap <- getTerminalMap()) {
-    terminalMap = tMap
-  }
 
   def decompressPhase(): Receive = {
     case ExtractZipFile =>
@@ -155,12 +150,10 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
               val message = "解壓縮成功"
               reportInfo.state = message
               dataFile.delete()
-              val f = getTerminalMap()
-              for (map <- f) {
-                context become importDbfPhase(parentPath, 0)
-                finish(context.self.path.name)
-                self ! ImportDatabase
-              }
+
+              context become importDbfPhase(parentPath, 0)
+              finish(context.self.path.name)
+              self ! ImportDatabase
             }
           } catch {
             case ex: Exception =>
@@ -214,8 +207,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
           try {
             reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
             count = count + 1
-            subTask.current = count
-            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
+            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask.name)
 
             do {
               rowObjects = reader.nextRecord()
@@ -283,6 +275,8 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
     })
   }
 
+  import ReportRecord._
+
   def importNoiseData(mainFolder: String, relativePath: String, recordPeriod: RecordPeriod) = {
     Future {
       blocking {
@@ -299,8 +293,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
           try {
             reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
             count = count + 1
-            subTask.current = count
-            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
+            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask.name)
 
             do {
               rowObjects = reader.nextRecord()
@@ -379,8 +372,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
     })
   }
 
-  import ReportRecord._
-
   def importWindHourData(mainFolder: String, relativePath: String) = {
     Future {
       blocking {
@@ -397,8 +388,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
           try {
             reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
             count = count + 1
-            subTask.current = count
-            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
+            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask.name)
 
             do {
               rowObjects = reader.nextRecord()
@@ -474,8 +464,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
           try {
             reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
             count = count + 1
-            subTask.current = count
-            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
+            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask.name)
 
             do {
               rowObjects = reader.nextRecord()
@@ -573,8 +562,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
           try {
             reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
             count = count + 1
-            subTask.current = count
-            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
+            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask.name)
 
             do {
               rowObjects = reader.nextRecord()
@@ -722,75 +710,31 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       self ! PoisonPill
   }
 
-  import org.mongodb.scala.model._
-
-  def auditSecData(): Unit = {
-
-    import com.github.nscala_time.time.Imports._
-    val start = new LocalDateTime(reportInfo.year + 1911,
-      (reportInfo.quarter - 1) * 3 + 1, 1, 0, 0)
-    val end = start.plusMonths(3)
-    val days = new Period(start, end).getDays
-    var dayList: List[LocalDateTime] = List.empty[LocalDateTime]
-    var current = start
-    do{
-      dayList = dayList:+(current)
-      current = current.plusDays(1)
-    }while(current < end)
-
-    val subTask = SubTask(s"稽核每秒資料", 0, terminalMap.size * days)
-    reportInfoOp.addSubTask(reportInfo._id, subTask)
-    import scala.collection.mutable.Map
-
-    def auditDay(mntNum:Int, day:LocalDateTime, dayMap:Map[Date, MinRecord]): Unit ={
-      val dayEnd = day.plusDays(1)
-      var current = day
-      do{
-        if(!dayMap.contains(current.toDate)){
-          val mntName = terminalMap(mntNum)
-          val msg = s"${mntName} ${current.toString("yyyy/MM/dd HH:mm")}缺少資料"
-        }
-        current.plusMinutes(1)
-      }while(current < dayEnd)
-      subTask.current = subTask.current + 1
-      reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask)
-      if(subTask.current == subTask.total)
-        self ! TaskComplete
-    }
-    for {mntNum <- terminalMap.keys
-          day<- dayList} {
-      import org.mongodb.scala.model.Filters._
-      val dayEnd = day.plusDays(1)
-      val filter = Filters.and(equal("_id.terminalID", mntNum),
-        gte("_id.time", day.toDate), lt("_id.time", dayEnd.toDate()))
-      val f = reportRecordOp.getMinCollection(Noise).find(filter).toFuture()
-
-      for{dayData: Seq[MinRecord] <-f
-          minRecord <- dayData
-          }{
-        val dataMap = Map.empty[Date, MinRecord]
-        dataMap.update(minRecord._id.time, minRecord)
-        auditDay(mntNum, day, dataMap)
-      }
-    }
-  }
-
-  def auditReportPhase(auditTasks: Int): Receive = {
+  def auditReportPhase(auditors: Int): Receive = {
     case AuditReport =>
       reportInfoOp.updateState(reportInfo._id, "產出稽核報告中")
-      self ! AuditSecData
-
-    case AuditSecData =>
-      context become auditReportPhase(auditTasks + 1)
-      Future {
-        blocking {
-          auditSecData()
-        }
+      val start = new DateTime(reportInfo.year + 1911,
+        (reportInfo.quarter - 1) * 3 + 1, 1, 0, 0)
+      val end = start.plusMonths(3)
+      val d : Duration = new Duration(start, end)
+      Logger.info(s"total ${terminalMap.size} ${d.getStandardDays}")
+      for (mntNum <- terminalMap.keys) {
+        val subTask = SubTask(s"稽核${terminalMap(mntNum)}噪音資料", 0, d.getStandardDays.toInt)
+        reportInfoOp.addSubTask(reportInfo._id, subTask)
+        val props = NoiseSecAuditor.props(reportInfo, reportInfoOp, reportRecordOp,
+          reportTolerance, auditLogOp, subTask.name,
+          mntNum, terminalMap, start, end)
+        context.actorOf(props)
       }
+      context become auditReportPhase(auditors + terminalMap.keys.size)
+
+    case NoiseSecAuditor.NoiseSecAuditComplete =>
+      sender() ! PoisonPill
+      self ! TaskComplete
 
     case TaskComplete =>
-      if (auditTasks - 1 > 0)
-        context become auditReportPhase(auditTasks - 1)
+      if (auditors - 1 > 0)
+        context become auditReportPhase(auditors - 1)
       else {
         reportInfoOp.updateState(reportInfo._id, "稽核完成")
         reportInfoOp.clearAllSubTasks(reportInfo._id)

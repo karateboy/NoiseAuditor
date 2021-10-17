@@ -61,3 +61,4 @@ GET     /ReportIDs                                                   controllers
 GET     /ReportInfo/:year/:quarter/:airportID/:version               controllers.HomeController.getReportInfo(year:Int, quarter:Int, airportID:Int, version:Int)
 
 POST    /Reaudit                controllers.HomeController.reauditReport()
+GET     /ClearAll               controllers.HomeController.clearAllReport()

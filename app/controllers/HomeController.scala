@@ -16,8 +16,8 @@ import scala.concurrent.Future
 
 class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp, configuration: Configuration,
                               groupOp: GroupOp, airportOp: AirportOp, sysConfig: SysConfig,
-                               airportInfoOp: AirportInfoOp, actorSystem: ActorSystem, reportInfoOp: ReportInfoOp,
-                               mongoDB: MongoDB) extends Controller {
+                               airportInfoOp: AirportInfoOp, implicit val actorSystem: ActorSystem, reportInfoOp: ReportInfoOp,
+                               mongoDB: MongoDB, auditLogOp: AuditLogOp) extends Controller {
 
   val title = "機場噪音稽核系統"
 
@@ -200,7 +200,7 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
           reportInfoOp.upsertReportInfo(reportInfo)
           val actorName = ReportImporter.start(dataFile = file, airportInfoOp= airportInfoOp, reportInfo = reportInfo,
             reportInfoOp, ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB),
-            reportTolerance)(actorSystem)
+            reportTolerance, auditLogOp)
           Ok(Json.obj("actorName" -> actorName, "version"->ver))
         }
       }
@@ -252,7 +252,7 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
             if(reportInfo.nonEmpty){
               ReportImporter.reaudit(airportInfoOp, reportInfo(0),
                 reportInfoOp, ReportRecord.getReportRecordOp(reportInfo(0))(mongoDB = mongoDB),
-                reportTolerance)(actorSystem)
+                reportTolerance, auditLogOp)
 
               Ok(Json.obj("ok" -> true))
             }else
@@ -261,5 +261,11 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
 
         })
   }
+
+  def clearAllReport() = Security.Authenticated {
+    reportInfoOp.clearAll()
+    Ok("clear all reportInfo related collections")
+  }
+
   case class EditData(id: String, data: String)
 }

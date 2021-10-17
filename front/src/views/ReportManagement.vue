@@ -120,8 +120,11 @@ export default Vue.extend({
     canReaudit(): boolean {
       if (this.reportInfo == undefined) return false;
 
+      return true;
+      /*
       if (this.reportInfo.state === '稽核完成') return true;
       else return false;
+      */
     },
   },
   watch: {
@@ -132,6 +135,8 @@ export default Vue.extend({
   async mounted() {
     await this.getAirportList();
     await this.getReportInfoIdList();
+    if (this.reportIdList.length !== 0)
+      this.form._id = this.reportIdList[this.reportIdList.length - 1];
   },
   methods: {
     ...mapMutations(['setLoading', 'setActiveReportIDs']),
@@ -180,7 +185,6 @@ export default Vue.extend({
 
         let reportID = this.form._id;
         let airportInfoID = reportID.airpotInfoID as AirportInfoID;
-        console.log(airportInfoID);
         const res = await axios.post('/Reaudit', this.form._id);
         if (res.status == 200) {
           let airportName = '';
