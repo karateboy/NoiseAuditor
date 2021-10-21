@@ -169,7 +169,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       self ! AuditReport
 
     case TaskAbort(reason) =>
-      reportInfo.state = "失敗"
+      reportInfo.state = reason
       reportInfo.appendUnableAuditReason(reason)
       reportInfoOp.upsertReportInfo(reportInfo)
       finish(context.self.path.name)
@@ -444,6 +444,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
     } onFailure ({
       case ex: Exception =>
         Logger.error(s"failed to import ${relativePath}", ex)
+        // Ignore Wind data
         self ! TaskAbort(s"無法匯入${relativePath}")
     })
   }
@@ -459,72 +460,147 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
         for (path <- fileCount) {
           import com.linuxense.javadbf.DBFReader
           var reader: DBFReader = null
-          var recordList = Seq.empty[EventRecord]
           var rowObjects: Array[Object] = null
+          var terminal = ""
+          var time = ""
+          var fieldName = ""
+          var reason = ""
           try {
             reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
             count = count + 1
             reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask.name)
-
+            var row = 0
             do {
               rowObjects = reader.nextRecord()
+              row = row + 1
+              terminal = ""
+              time = ""
+              fieldName = ""
+              reason = ""
               if (rowObjects != null) {
                 try {
-                  val mntNumber = rowObjects(0).asInstanceOf[String].trim.toInt
+                  val mntNumber = try {
+                    rowObjects(0).asInstanceOf[String].trim.toInt
+                  }catch {
+                    case ex:Throwable =>
+                      fieldName = "MNT_NUMBER"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
                   val mntName = rowObjects(1).asInstanceOf[String].trim
                   val startDate: LocalDate = try {
                     LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
                   } catch {
                     case _: IllegalArgumentException =>
-                      LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
+                      try{
+                        LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
+
+                      }catch{
+                        case ex:Throwable=>
+                          fieldName = "START_DATE"
+                          reason = s"第${row}行格式錯誤"
+                          throw ex
+                      }
                   }
-                  val startTime = LocalTime.parse(rowObjects(3).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                  val startTime = try {
+                    LocalTime.parse(rowObjects(3).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                  }catch{
+                    case ex:Throwable=>
+                      fieldName = "START_TIME"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
                   val start = startDate.toLocalDateTime(startTime)
-                  val duration = rowObjects(4).asInstanceOf[java.math.BigDecimal].toBigInteger.intValue()
-                  val setl = rowObjects(5).asInstanceOf[java.math.BigDecimal].doubleValue()
-                  val minDurationTime = rowObjects(6).asInstanceOf[java.math.BigDecimal].toBigInteger.intValue()
-                  val eventLeq = rowObjects(7).asInstanceOf[java.math.BigDecimal].doubleValue()
-                  val eventSel = rowObjects(8).asInstanceOf[java.math.BigDecimal].doubleValue()
-                  val eventMaxLen = rowObjects(9).asInstanceOf[java.math.BigDecimal].doubleValue()
-                  val eventMaxT = LocalTime.parse(rowObjects(10).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                  time = start.toString("yyyy/MM/dd HH:mm:ss")
+                  val duration = try {
+                    rowObjects(4).asInstanceOf[java.math.BigDecimal].toBigInteger.intValue()
+                  }catch {
+                    case ex:Throwable=>
+                      fieldName = "DURATION_T"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val setl = try{
+                    rowObjects(5).asInstanceOf[java.math.BigDecimal].doubleValue()
+                  }catch {
+                    case ex:Throwable=>
+                      fieldName = "SETL"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val minDurationTime = try{
+                    rowObjects(6).asInstanceOf[java.math.BigDecimal].toBigInteger.intValue()
+                  }catch {
+                    case ex:Throwable=>
+                      fieldName = "MIN_DUR_TIME"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val eventLeq = try{
+                    rowObjects(7).asInstanceOf[java.math.BigDecimal].doubleValue()
+                  }catch {
+                    case ex:Throwable=>
+                      fieldName = "EVENT_Leq"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val eventSel = try{
+                    rowObjects(8).asInstanceOf[java.math.BigDecimal].doubleValue()
+                  }catch {
+                    case ex:Throwable=>
+                      fieldName = "EVENT_SEL"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val eventMaxLen = try{
+                    rowObjects(9).asInstanceOf[java.math.BigDecimal].doubleValue()
+                  }catch {
+                    case ex:Throwable=>
+                      fieldName = "EVENT_MAX_LEVEL"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val eventMaxT = try {
+                    LocalTime.parse(rowObjects(10).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                  }catch {
+                    case ex:Throwable=>
+                      fieldName = "EVENT_MAX_TIME"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
                   var secRecords = Seq.empty[SecRecord]
-                  for (i <- 0 to 120) {
+                  for (i <- 0 to 122) {
                     try {
+                      val fielfName = s"SL$i"
+                      rowObjects()
                       secRecords = secRecords :+ SecRecord(start.plusSeconds(i).toDate(), rowObjects(i + 11).asInstanceOf[java.math.BigDecimal].doubleValue())
                     } catch {
-                      case ex: Exception =>
-                        Logger.error(s"${path.toFile.getPath} ${mntName} ${start} 遺失第${i}秒資料")
+                      case _: Exception =>
                     }
                   }
                   val record = EventRecord(RecordID(start.toDate, mntNumber, Event.toString), duration = duration,
                     setl = setl, minDur = minDurationTime, eventLeq = eventLeq, eventSel = eventSel, eventMaxLen = eventMaxLen,
                     eventMaxTime = startDate.toLocalDateTime(eventMaxT).toDate(), secRecords)
-                  recordList = recordList :+ (record)
+                  val f = collection.insertOne(record).toFuture()
+                  f onFailure({
+                    case ex:Throwable=>
+                      val recordTerminal = terminalMap(record._id.terminalID)
+                      val time = new DateTime(record._id.time).toString("YYYY/MM/dd HH:mm:ss")
+                      val dfe = DataFormatError(fileName = path.toFile.getName, terminal = recordTerminal,
+                        time = time,
+                        dataType = s"$relativePath",
+                        fieldName = fieldName, errorInfo = "資料重複", value = ex.getMessage)
+                      dfeList = dfeList :+ (dfe)
+                  })
                 } catch {
                   case ex: Exception =>
-                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = terminal, time = time,
                       dataType = s"$relativePath",
-                      fieldName = "", errorInfo = "格式錯誤", value = ex.getMessage)
+                      fieldName = fieldName, errorInfo = reason, value = ex.getMessage)
                     dfeList = dfeList :+ (dfe)
-                    Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
             } while (rowObjects != null)
-            if (recordList.nonEmpty) {
-              val f = collection.insertMany(recordList).toFuture()
-              f onFailure ({
-                case _: Throwable =>
-                  val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
-                    dataType = s"$relativePath",
-                    fieldName = "", errorInfo = "出現重複事件", value = "")
-                  dfeList = dfeList :+ (dfe)
-              })
-            } else {
-              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
-                dataType = s"$relativePath",
-                fieldName = "", errorInfo = "檔案無資料", value = "")
-              dfeList = dfeList :+ (dfe)
-            }
           } catch {
             case ex: Exception =>
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
@@ -557,52 +633,100 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
         for (path <- fileCount) {
           import com.linuxense.javadbf.DBFReader
           var reader: DBFReader = null
-          var recordList = Seq.empty[FlightInfo]
           var rowObjects: Array[Object] = null
           try {
             reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
             count = count + 1
             reportInfoOp.incSubTaskCurrentCount(reportInfo._id, subTask.name)
-
+            var terminal = ""
+            var time = ""
+            var fieldName = ""
+            var reason = ""
+            var row = 0
             do {
               rowObjects = reader.nextRecord()
+              row = row + 1
               if (rowObjects != null) {
                 try {
-                  val startDate = try {
-                    LocalDate.parse(rowObjects(0).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
+                  val startDate: LocalDate = try {
+                    LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
                   } catch {
                     case _: IllegalArgumentException =>
-                      LocalDate.parse(rowObjects(0).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
+                      try{
+                        LocalDate.parse(rowObjects(2).asInstanceOf[String].trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
+
+                      }catch{
+                        case ex:Throwable=>
+                          fieldName = "START_DATE"
+                          reason = s"第${row}行格式錯誤"
+                          throw ex
+                      }
                   }
-                  val startTime = LocalTime.parse(rowObjects(1).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                  val startTime = try {
+                    LocalTime.parse(rowObjects(3).asInstanceOf[String].trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                  }catch{
+                    case ex:Throwable=>
+                      fieldName = "START_TIME"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
                   val start = startDate.toLocalDateTime(startTime)
-                  val acftID = rowObjects(2).asInstanceOf[String]
-                  val operation = rowObjects(3).asInstanceOf[String]
-                  val runway = rowObjects(4).asInstanceOf[String]
-                  val flightRoute = rowObjects(5).asInstanceOf[String]
+                  time = start.toString("yyyy/MM/dd HH:mm:ss")
+                  val acftID = try{
+                    rowObjects(2).asInstanceOf[String]
+                  }catch{
+                    case ex:Throwable=>
+                      fieldName = "ACFT_ID"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val operation = try{
+                    rowObjects(3).asInstanceOf[String]
+                  }catch{
+                    case ex:Throwable=>
+                      fieldName = "OPERATION"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val runway = try{
+                    rowObjects(4).asInstanceOf[String]
+                  }catch{
+                    case ex:Throwable=>
+                      fieldName = "RUNWAY"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
+                  val flightRoute = try{
+                    rowObjects(5).asInstanceOf[String]
+                  }catch{
+                    case ex:Throwable=>
+                      fieldName = "FLIGHT_ROUTE"
+                      reason = s"第${row}行格式錯誤"
+                      throw ex
+                  }
 
                   val record = FlightInfo(start.toDate, acftID: String, operation: String, runway: String, flightRoute: String)
-                  recordList = recordList :+ (record)
+                  val collection = reportRecordOp.getFlightCollection
+                  val f = collection.insertOne(record).toFuture()
+                  f onFailure ({
+                    case ex:Throwable=>
+                      val time = new DateTime(record._id).toString("YYYY/MM/dd HH:mm:ss")
+                      val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "",
+                        time = time,
+                        dataType = s"$relativePath",
+                        fieldName = fieldName, errorInfo = "資料重複", value = ex.getMessage)
+                      dfeList = dfeList :+ (dfe)
+                  })
                 } catch {
                   case ex: Exception =>
-                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
+                    val dfe = DataFormatError(fileName = path.toFile.getName, terminal = terminal, time = time,
                       dataType = s"$relativePath",
-                      fieldName = "", errorInfo = "資料格式錯誤", value = ex.getMessage)
+                      fieldName = fieldName, errorInfo = reason, value = ex.getMessage)
                     dfeList = dfeList :+ (dfe)
                     Logger.error(s"${path.toFile.getPath} 忽略第${count}筆錯誤資料", ex)
                 }
               }
             } while (rowObjects != null)
-            if (recordList.nonEmpty) {
-              val collection = reportRecordOp.getFlightCollection
-              val f = collection.insertMany(recordList).toFuture()
-              f onFailure (errorHandler)
-            } else {
-              val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
-                dataType = s"$relativePath",
-                fieldName = "", errorInfo = "檔案無資料", value = "")
-              dfeList = dfeList :+ (dfe)
-            }
           } catch {
             case ex: Exception =>
               val dfe = DataFormatError(fileName = path.toFile.getName, terminal = "", time = "",
@@ -620,7 +744,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
     } onFailure ({
       case ex: Exception =>
         Logger.error(s"failed to import ${relativePath}", ex)
-        self ! TaskAbort(s"無法匯入${relativePath}")
+        self ! TaskComplete
     })
   }
 
@@ -647,7 +771,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       self ! ImportYearlyNoise
       self ! ImportTestNoiseEvent
       self ! ImportNoiseEvent
-      self ! ImportDailyFlight
+      // self ! ImportDailyFlight
 
     case ImportSecondWind =>
       context become importDbfPhase(mainFolder, importTasks + 1)
@@ -679,7 +803,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
 
     case ImportHourlyWeather =>
       context become importDbfPhase(mainFolder, importTasks + 1)
-      importWindHourData(mainFolder, "每小時氣象噪音監測資料")
+      importWindHourData(mainFolder, "每小時氣象監測資料")
 
     case ImportNoiseEvent =>
       context become importDbfPhase(mainFolder, importTasks + 1)
@@ -691,7 +815,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
 
     case ImportDailyFlight =>
       context become importDbfPhase(mainFolder, importTasks + 1)
-      importFlightData(mainFolder, "每日飛航監測資料")
+      importFlightData(mainFolder, "飛航動態資料")
 
     case TaskComplete =>
       if (importTasks - 1 != 0)
@@ -703,7 +827,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
         self ! AuditReport
       }
     case TaskAbort(reason) =>
-      reportInfo.state = "失敗"
+      reportInfo.state = reason
       reportInfo.appendUnableAuditReason(reason)
       reportInfoOp.upsertReportInfo(reportInfo)
       finish(context.self.path.name)

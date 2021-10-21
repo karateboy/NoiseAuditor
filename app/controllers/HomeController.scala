@@ -2,6 +2,7 @@ package controllers
 
 import akka.actor.ActorSystem
 import models._
+import org.apache.commons.io.FileUtils
 import org.apache.commons.io.file.PathUtils.createParentDirectories
 import play.api._
 import play.api.libs.json._
@@ -218,7 +219,6 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
       val idList = ret.map { r => r._id }
       Ok(Json.toJson(idList))
     }
-
   }
 
   def getReportInfo(year: Int, quarter: Int, airportID: Int, version: Int) = Security.Authenticated.async {
@@ -230,6 +230,28 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
     implicit val write = Json.writes[ReportInfo]
     for (ret <- reportInfoOp.get(reportID)) yield
       Ok(Json.toJson((ret)))
+  }
+
+  def deleteReportInfo(year: Int, quarter: Int, airportID: Int, version: Int) = Security.Authenticated.async {
+    val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
+    for (ret <- reportInfoOp.get(reportID)) yield {
+      if(ret.nonEmpty){
+        val reportInfo = ret(0)
+        reportInfo.removeCollection(mongoDB)
+        reportInfoOp.delete(reportID)
+        try{
+          val config: Configuration = configuration.getConfig("auditor").get
+          val downloadFolder = config.getString("downloadFolder").get
+          val dataFolder = Paths.get(s"${downloadFolder}/${year}Y${quarter}Q_airport${airportID}v${reportInfo.version}/")
+          FileUtils.deleteDirectory(dataFolder.toFile)
+        }catch{
+          case _:Throwable=>
+        }
+
+        Ok(Json.obj("Ok"->true))
+      }else
+        Ok(Json.obj("Ok"->false))
+    }
   }
 
   def reauditReport() = Security.Authenticated.async(BodyParsers.parse.json) {

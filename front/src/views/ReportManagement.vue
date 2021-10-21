@@ -46,6 +46,12 @@
               @click="downloadReport"
               >下載稽核報表</b-button
             >
+            <b-button
+              class="mr-2"
+              variant="outline-primary"
+              @click="clearReportData"
+              >刪除資料</b-button
+            >
           </b-col>
         </b-row>
       </b-form>
@@ -150,7 +156,7 @@ export default Vue.extend({
           this.airportList = res.data;
         }
       } catch (ex) {
-        throw new Error(ex);
+        throw new Error('getAirportList failed' + ex);
       }
     },
     async getReportInfo() {
@@ -169,7 +175,7 @@ export default Vue.extend({
           this.reportInfo = ret[0];
         }
       } catch (err) {
-        throw new Error(err);
+        throw new Error('getReportInfo failed' + err);
       }
     },
     async getReportInfoIdList() {
@@ -179,7 +185,7 @@ export default Vue.extend({
           this.reportIdList = res.data;
         }
       } catch (err) {
-        throw new Error(err);
+        throw new Error('getReportInfoIdList failed' + err);
       }
     },
     async reauditReport() {
@@ -207,7 +213,7 @@ export default Vue.extend({
           this.$router.push({ name: 'import-progress' });
         }
       } catch (err) {
-        throw new Error(err);
+        throw new Error('無法重新稽核' + err);
       }
     },
     async downloadReport() {
@@ -219,6 +225,33 @@ export default Vue.extend({
       const version = this.form._id?.version;
       const url = `${baseUrl}AuditReport/${year}/${quarter}/${airportID}/${version}`;
       window.open(url);
+    },
+    async clearReportData() {
+      try {
+        if (this.form._id === undefined) return;
+
+        let year = this.form._id.airpotInfoID.year;
+        let quarter = this.form._id.airpotInfoID.quarter;
+        let airportID = this.form._id.airpotInfoID.airportID;
+        let version = this.form._id.version;
+        const res = await axios.delete(
+          `/ReportInfo/${year}/${quarter}/${airportID}/${version}`,
+        );
+        if (res.status == 200) {
+          let text = `刪除監測資料`;
+          Swal.fire({
+            title: '成功',
+            text,
+            icon: 'success',
+            confirmButtonText: '確定',
+          });
+        }
+        await this.getReportInfoIdList();
+        if (this.reportIdList.length !== 0)
+          this.form._id = this.reportIdList[this.reportIdList.length - 1];
+      } catch (err) {
+        throw new Error('無法清除報表資料' + err);
+      }
     },
   },
 });

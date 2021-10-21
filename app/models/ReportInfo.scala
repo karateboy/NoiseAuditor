@@ -149,4 +149,11 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
     f onFailure errorHandler()
     f
   }
+
+  def delete (_id:ReportID) = {
+    val filter = Filters.and(Filters.equal("_id", _id))
+    val f = collection.deleteOne(filter).toFuture()
+    f onFailure errorHandler
+    f
+  }
 }
