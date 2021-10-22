@@ -216,8 +216,14 @@ class ExcelUtility @Inject()
     fillNoiseHourReport()
     fillNoiseDayReport()
 
+    def getProperFileName(name:String) = {
+      name.replace("^\\.+", "").replaceAll("[\\\\/:*?\"<>|]", "")
+    }
+
     val result =finishExcel(reportFilePath, pkg, wb)
-    val targetFile = new File(result.toPath.getParent + s"/${terminalMap(mntNum)}.xlsx")
+    val properName = getProperFileName(s"${terminalMap(mntNum)}.xlsx")
+
+    val targetFile = new File(result.toPath.getParent + s"/$properName")
 
     if(!result.renameTo(targetFile)) {
       Logger.error(s"faile to rename to ${targetFile}")
