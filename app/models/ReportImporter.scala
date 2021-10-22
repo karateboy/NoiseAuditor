@@ -1142,7 +1142,11 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       else {
         context become auditReportPhase(0)
         reportInfoOp.clearAllSubTasks(reportInfo._id)
-        FileUtils.deleteDirectory(new File(mainFolder))
+        try{
+          FileUtils.deleteDirectory(new File(mainFolder))
+        }catch{
+          case _=>
+        }
         reportInfo.state = "匯入完畢"
         reportInfoOp.upsertReportInfo(reportInfo)
         finish(context.self.path.name)
