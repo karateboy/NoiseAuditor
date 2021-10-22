@@ -61,14 +61,14 @@ class AirportInfoOp @Inject()(mongoDB: MongoDB){
       Filters.equal("_id.quarter", quarter),
       Filters.equal("_id.airportID", airportID))
     val f = collection.find(filter).toFuture()
-    f onFailure(errorHandler())
+    f onFailure errorHandler()
     f
   }
 
   def getLatest(airportID:Int): Future[Seq[AirportInfo]] ={
     val filter = Filters.equal("_id.airportID", airportID)
     val f = collection.find(filter).sort(Sorts.descending("_id.year", "_id.quarter")).toFuture()
-    f onFailure(errorHandler())
+    f onFailure errorHandler()
     f
   }
 

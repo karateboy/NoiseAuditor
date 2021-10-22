@@ -92,7 +92,7 @@ export default Vue.extend({
     let form: AirportInfo = {
       _id: {
         year: now.year() - 1911,
-        quarter: now.month() / 4 + 1,
+        quarter: Math.floor(now.month() / 4) + 1,
         airportID: 0,
       },
       terminals: Array<Terminal>(),
@@ -152,7 +152,7 @@ export default Vue.extend({
           this.airportList = res.data;
         }
       } catch (ex) {
-        throw new Error(ex);
+        throw new Error('failed to getAirportList');
       }
     },
     async checkAirportInfo() {
@@ -170,7 +170,7 @@ export default Vue.extend({
           } else this.airportInfoReady = false;
         }
       } catch (err) {
-        throw new Error(err);
+        throw new Error('failed to checkAirportInfo');
       }
     },
     goAirportInfoConfig() {

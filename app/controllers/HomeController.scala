@@ -16,7 +16,8 @@ import scala.concurrent.Future
 
 class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp, configuration: Configuration,
                                groupOp: GroupOp, airportOp: AirportOp, sysConfig: SysConfig,
-                               airportInfoOp: AirportInfoOp, implicit val actorSystem: ActorSystem, reportInfoOp: ReportInfoOp,
+                               airportInfoOp: AirportInfoOp, implicit val actorSystem: ActorSystem,
+                               reportInfoOp: ReportInfoOp, importErrorLogOp: ImportErrorLogOp,
                                mongoDB: MongoDB, auditLogOp: AuditLogOp,
                                excelUtility: ExcelUtility) extends Controller {
 
@@ -200,8 +201,9 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
           val reportInfo = ReportInfo(airportInfoID = airportInfoID, version = ver)
           reportInfoOp.upsertReportInfo(reportInfo)
           val actorName = ReportImporter.start(dataFile = file, airportInfoOp = airportInfoOp, reportInfo = reportInfo,
-            reportInfoOp, ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB),
-            reportTolerance, auditLogOp)
+            reportInfoOp = reportInfoOp, importErrorLogsOp = importErrorLogOp,
+            reportRecordOp = ReportRecord.getReportRecordOp(reportInfo)(mongoDB = mongoDB),
+            reportTolerance = reportTolerance, auditLogOp = auditLogOp)
           Ok(Json.obj("actorName" -> actorName, "version" -> ver))
         }
       }
@@ -239,6 +241,8 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
         val reportInfo = ret(0)
         reportInfo.removeCollection(mongoDB)
         reportInfoOp.delete(reportID)
+        importErrorLogOp.delete(reportID)
+
         try{
           val config: Configuration = configuration.getConfig("auditor").get
           val downloadFolder = config.getString("downloadFolder").get
@@ -274,7 +278,7 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
                } yield {
             if (reportInfo.nonEmpty) {
               ReportImporter.reaudit(airportInfoOp, reportInfo(0),
-                reportInfoOp, ReportRecord.getReportRecordOp(reportInfo(0))(mongoDB = mongoDB),
+                reportInfoOp, importErrorLogOp, ReportRecord.getReportRecordOp(reportInfo(0))(mongoDB = mongoDB),
                 reportTolerance, auditLogOp)
 
               Ok(Json.obj("ok" -> true))
