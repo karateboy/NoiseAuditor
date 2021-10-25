@@ -13,18 +13,41 @@
           </b-form-group>
         </b-col>
         <b-col cols="12">
-          <b-form-group label="總計均能音量 Total_Leq:" label-cols-md="3">
-            <b-form-input v-model.number="rt.totalLeq" />
+          <b-form-group label="背景均能音量 Back_Leq:" label-cols-md="3">
+            <b-form-input v-model.number="rt.backLeq" />
           </b-form-group>
         </b-col>
         <b-col cols="12">
-          <b-form-group label="總計均能音量 Total_Leq:" label-cols-md="3">
-            <b-form-input v-model.number="rt.totalLeq" />
+          <b-form-group label="總計日夜音量 Total_Ldn:" label-cols-md="3">
+            <b-form-input v-model.number="rt.totalLdn" />
           </b-form-group>
         </b-col>
         <b-col cols="12">
-          <b-form-group label="總計均能音量 Total_Leq:" label-cols-md="3">
-            <b-form-input v-model.number="rt.totalLeq" />
+          <b-form-group label="事件日夜音量 Event_Ldn:" label-cols-md="3">
+            <b-form-input v-model.number="rt.eventLdn" />
+          </b-form-group>
+        </b-col>
+        <b-col cols="12">
+          <b-form-group label="背景日夜音量 Back_Ldn:" label-cols-md="3">
+            <b-form-input v-model.number="rt.backLdn" />
+          </b-form-group>
+        </b-col>
+        <b-col cols="12">
+          <b-form-group
+            label="總事件暴露位準 TOTAL_EVENT_SEL:"
+            label-cols-md="3"
+          >
+            <b-form-input v-model.number="rt.totalEventSel" />
+          </b-form-group>
+        </b-col>
+        <b-col cols="12">
+          <b-form-group label="噪音事件數 NUM_OF_EVENT:" label-cols-md="3">
+            <b-form-input v-model.number="rt.numOfEvent" />
+          </b-form-group>
+        </b-col>
+        <b-col cols="12">
+          <b-form-group label="總持續時間 DURATION:" label-cols-md="3">
+            <b-form-input v-model.number="rt.duration" />
           </b-form-group>
         </b-col>
       </b-row>
@@ -32,14 +55,11 @@
         <b-col offset-md="3">
           <b-button
             v-b-tooltip.hover
-            title="載入清單或最近一季清單"
-            type="submit"
             variant="gradient-primary"
             class="mr-1"
-            :disabled="!canEdit"
-            @click="edit"
+            @click="save"
           >
-            載入編輯
+            設定
           </b-button>
         </b-col>
       </b-row>
@@ -84,6 +104,11 @@ export default Vue.extend({
     return {
       rt,
     };
+  },
+  methods: {
+    save() {
+      this.$emit('rt-changed', this.rt);
+    },
   },
 });
 </script>

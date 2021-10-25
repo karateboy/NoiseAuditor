@@ -125,8 +125,7 @@ export interface ReportInfo {
   quarter: number;
   version: number;
   state: string;
-  importLog: string;
-  auditLog: string;
+  reportTolerance: ReportTolerance | undefined;
   tasks: Array<SubTask>;
 }
 

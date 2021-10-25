@@ -237,25 +237,57 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
   def deleteReportInfo(year: Int, quarter: Int, airportID: Int, version: Int) = Security.Authenticated.async {
     val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
     for (ret <- reportInfoOp.get(reportID)) yield {
-      if(ret.nonEmpty){
+      if (ret.nonEmpty) {
         val reportInfo = ret(0)
         reportInfo.removeCollection(mongoDB)
         reportInfoOp.delete(reportID)
         importErrorLogOp.delete(reportID)
 
-        try{
+        try {
           val config: Configuration = configuration.getConfig("auditor").get
           val downloadFolder = config.getString("downloadFolder").get
           val dataFolder = Paths.get(s"${downloadFolder}/${year}Y${quarter}Q_airport${airportID}v${reportInfo.version}/")
           FileUtils.deleteDirectory(dataFolder.toFile)
-        }catch{
-          case _:Throwable=>
+        } catch {
+          case _: Throwable =>
         }
 
-        Ok(Json.obj("Ok"->true))
-      }else
-        Ok(Json.obj("Ok"->false))
+        Ok(Json.obj("Ok" -> true))
+      } else
+        Ok(Json.obj("Ok" -> false))
     }
+  }
+  def getReportTolerance(year: Int, quarter: Int, airportID: Int, version: Int) = Security.Authenticated.async {
+    val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
+    for{ret<-reportInfoOp.get(reportID)
+        defaultRT <- ReportTolerance.get(sysConfig)
+        }yield{
+      if(ret.nonEmpty){
+        val reportInfo = ret(0)
+        val rt = reportInfo.reportTolerance.getOrElse(defaultRT)
+        Ok(Json.toJson(rt))
+      }else
+        BadRequest
+    }
+  }
+
+  def setReportTolerance(year: Int, quarter: Int, airportID: Int, version: Int) = Security.Authenticated.async(BodyParsers.parse.json) {
+    implicit request =>
+      import ReportTolerance._
+      val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
+      val ret = request.body.validate[ReportTolerance]
+      ret.fold(
+        error => {
+          Future {
+            Logger.error(JsError.toJson(error).toString())
+            BadRequest(Json.obj("ok" -> false, "msg" -> JsError.toJson(error).toString()))
+          }
+        },
+        rt => {
+          for (reportInfo <- reportInfoOp.setReortTolerance(reportID, rt)) yield {
+            Ok(Json.obj("ok" -> true))
+          }
+        })
   }
 
   def reauditReport() = Security.Authenticated.async(BodyParsers.parse.json) {
@@ -265,7 +297,6 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
       val ret = request.body.validate[ReportID]
 
       ret.fold(
-
         error => {
           Future {
             Logger.error(JsError.toJson(error).toString())
@@ -274,12 +305,13 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
         },
         id => {
           for {reportInfo <- reportInfoOp.get(id)
-               reportTolerance <- ReportTolerance.get(sysConfig)
+               defaultRT <- ReportTolerance.get(sysConfig)
                } yield {
             if (reportInfo.nonEmpty) {
+              val rt = reportInfo(0).reportTolerance.getOrElse(defaultRT)
               ReportImporter.reaudit(airportInfoOp, reportInfo(0),
                 reportInfoOp, importErrorLogOp, ReportRecord.getReportRecordOp(reportInfo(0))(mongoDB = mongoDB),
-                reportTolerance, auditLogOp)
+                rt, auditLogOp)
 
               Ok(Json.obj("ok" -> true))
             } else
@@ -314,13 +346,13 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
 
     val retF = auditLogFF.flatMap(x => x)
     for (ret <- retF) yield {
-      val map = terminalMap.map(p=>p._1->p._2.name).toMap
+      val map = terminalMap.map(p => p._1 -> p._2.name).toMap
       val files: Seq[File] =
         for (log <- ret) yield
           excelUtility.getAuditReports(log, map)
 
-      for(file<-files) {
-        val p = Paths.get(targetFolderPath+(s"/${file.getName}"))
+      for (file <- files) {
+        val p = Paths.get(targetFolderPath + (s"/${file.getName}"))
         Files.move(file.toPath, p, StandardCopyOption.REPLACE_EXISTING)
       }
 
@@ -331,8 +363,8 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
       process.waitFor()
       if (process.exitValue() != 0) {
         BadRequest("Failed")
-      }else{
-        val targetFilePath: String = targetFolderPath.getParent+("/report.zip")
+      } else {
+        val targetFilePath: String = targetFolderPath.getParent + ("/report.zip")
         Ok.sendFile(new File(targetFilePath), fileName = _ =>
           play.utils.UriEncoding.encodePathSegment("report.zip", "UTF-8"),
           onClose = () => {

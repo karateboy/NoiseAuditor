@@ -17,6 +17,7 @@ case class ReportID(airpotInfoID:AirportInfoID, version:Int)
 case class ReportInfo(_id:ReportID, year: Int, quarter:Int, version:Int = 0,
                       var state:String = "上傳檔案中",
                       var unableAuditReason: Seq[String] = Seq.empty[String],
+                      reportTolerance: Option[ReportTolerance] = None,
                       tasks: Seq[SubTask] = Seq.empty[SubTask]){
   val getCollectionName = s"Y${year}Q${quarter}airport${_id.airpotInfoID.airportID}v${_id.version}"
 
@@ -49,7 +50,8 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
 
   val ColName = "reportInfos"
   val codecRegistry = fromRegistries(fromProviders(classOf[ReportInfo],
-    classOf[ReportID], classOf[AirportInfoID], classOf[AirportInfo], classOf[Terminal], classOf[SubTask], classOf[DataFormatError]), DEFAULT_CODEC_REGISTRY)
+    classOf[ReportID], classOf[AirportInfoID], classOf[AirportInfo], classOf[Terminal], classOf[SubTask],
+    classOf[ReportTolerance]), DEFAULT_CODEC_REGISTRY)
   val collection: MongoCollection[ReportInfo] = mongoDB.database.withCodecRegistry(codecRegistry).getCollection(ColName)
 
   collection.createIndex(Indexes.ascending("airportInfo._id", "year", "quarter"), IndexOptions().unique(true))
@@ -113,6 +115,13 @@ class ReportInfoOp @Inject()(mongoDB: MongoDB) {
       Filters.equal("tasks.name", taskName))
     val update = Updates.inc("tasks.$.current", 1)
     val f = collection.updateOne(filter, update).toFuture()
+    f onFailure(errorHandler())
+    f
+  }
+
+  def setReortTolerance(_id:ReportID, rt:ReportTolerance) = {
+    val update = Updates.set("reportTolerance", rt)
+    val f = collection.updateOne(Filters.equal("_id", _id), update).toFuture()
     f onFailure(errorHandler())
     f
   }

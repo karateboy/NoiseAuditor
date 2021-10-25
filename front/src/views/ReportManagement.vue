@@ -48,13 +48,32 @@
             >
             <b-button
               class="mr-2"
-              variant="outline-primary"
+              variant="outline-info"
+              @click="setReportTolerance"
+              >設定誤差範圍</b-button
+            >
+            <b-button
+              class="mr-2"
+              variant="outline-danger"
               @click="clearReportData"
               >刪除資料</b-button
             >
           </b-col>
         </b-row>
       </b-form>
+      <b-modal
+        id="reportToleranceModal"
+        :title="reportToleranceModelTitle"
+        hide-footer
+        size="xl"
+        modal-class="modal-primary"
+        no-close-on-backdrop
+      >
+        <report-tolerance-page
+          :report-tolerance="reportTolerance"
+          @rt-changed="handleRTchanged"
+        ></report-tolerance-page>
+      </b-modal>
     </b-card>
   </div>
 </template>
@@ -62,10 +81,11 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import { AirportInfoID, ReportID } from '../store/types';
-import { Airport, ReportInfo, SubTask } from './types';
+import { Airport, ReportInfo, ReportTolerance, SubTask } from './types';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { mapMutations } from 'vuex';
+import ReportTolerancePage from './ReportTolerancePage.vue';
 
 interface ReportDesc {
   _id: ReportID;
@@ -73,10 +93,15 @@ interface ReportDesc {
 }
 
 export default Vue.extend({
+  components: {
+    ReportTolerancePage,
+  },
   data() {
     let _id: ReportID | undefined;
     let reportInfo: ReportInfo | undefined;
     let reportIdList = Array<ReportID>();
+    let reportToleranceModelTitle = '';
+    let reportTolerance: ReportTolerance | undefined;
     return {
       form: {
         _id,
@@ -84,6 +109,8 @@ export default Vue.extend({
       airportList: Array<Airport>(),
       reportInfo,
       reportIdList,
+      reportToleranceModelTitle,
+      reportTolerance,
     };
   },
   computed: {
@@ -251,6 +278,44 @@ export default Vue.extend({
           this.form._id = this.reportIdList[this.reportIdList.length - 1];
       } catch (err) {
         throw new Error('無法清除報表資料' + err);
+      }
+    },
+    setReportTolerance(): void {
+      let reportID = this.form._id;
+      if (reportID == undefined) return;
+
+      let airportInfoID = reportID.airpotInfoID as AirportInfoID;
+      let airportName = '';
+      let airport = this.airportList.find(
+        p => p._id == airportInfoID.airportID,
+      );
+      if (airport) airportName = airport.name;
+
+      this.reportToleranceModelTitle = `${airportName}${airportInfoID.year}年${airportInfoID.quarter}第${reportID.version}版`;
+      this.reportTolerance = this.reportInfo?.reportTolerance;
+      this.$bvModal.show('reportToleranceModal');
+    },
+    async handleRTchanged(v: ReportTolerance) {
+      this.reportTolerance = v;
+      try {
+        const year = this.form._id?.airpotInfoID.year;
+        const quarter = this.form._id?.airpotInfoID.quarter;
+        const airportID = this.form._id?.airpotInfoID.airportID;
+        const version = this.form._id?.version;
+        const url = `/ReportInfo/ReportTolerance/${year}/${quarter}/${airportID}/${version}`;
+        const res = await axios.post(url, v);
+        if (res.status === 200) {
+          let text = `設定報表誤差`;
+          Swal.fire({
+            title: '成功',
+            text,
+            icon: 'success',
+            confirmButtonText: '確定',
+          });
+          await this.getReportInfo();
+        }
+      } catch (err) {
+        throw new Error('failed to handle RT');
       }
     },
   },
