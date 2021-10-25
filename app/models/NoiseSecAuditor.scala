@@ -131,12 +131,12 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         val eventLeq = 10 * Math.log10(eventSecSel.map(v => Math.pow(10, v / 10)).sum) - Math.log10(event.duration)
         var msg1 = "原始資料:"
         var msg2 = "稽核資料:"
-        if (event.eventLeq > eventLeq + reportTolerance.eventLeg || event.eventLeq < eventLeq - reportTolerance.eventLeg) {
+        if (event.eventLeq > eventLeq + reportTolerance.eventLeq || event.eventLeq < eventLeq - reportTolerance.eventLeq) {
           msg1 = msg1 + "EVENT_Leq=%.1f ".format(event.eventLeq)
           msg2 = msg2 + "EVENT_Leq=%.1f ".format(eventLeq)
         }
         val eventSel = eventLeq + 2 * Math.log10(event.duration)
-        if (event.eventSel > eventSel + reportTolerance.eventLeg || event.eventSel < eventSel - reportTolerance.eventLeg) {
+        if (event.eventSel > eventSel + reportTolerance.eventLeq || event.eventSel < eventSel - reportTolerance.eventLeq) {
           msg1 = msg1 + "EVENT_SEL=%.1f".format(event.eventSel)
           msg2 = msg2 + "EVENT_SEL=%.1f".format(eventSel)
         }
@@ -235,7 +235,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
       val duration = events.map(_.duration).sum
       logIfWrong(hourData.backLdn, backLdn, reportTolerance.backLdn, "BACK_Ldn=%.1f ")
       logIfWrong(hourData.backLeq, backLeq, reportTolerance.backLeq, "BACK_Leq=%.1f ")
-      logIfWrong(hourData.eventLeq, eventLeq, reportTolerance.eventLeg, "EVENT_Leq=%.1f ")
+      logIfWrong(hourData.eventLeq, eventLeq, reportTolerance.eventLeq, "EVENT_Leq=%.1f ")
       logIfWrong(hourData.eventLdn, eventLdn, reportTolerance.eventLdn, "EVENT_Ldn=%.1f ")
       logIfWrong(hourData.totalLdn, totalLdn, reportTolerance.totalLdn, "TOTAL_Ldn=%.1f ")
       logIfWrong(hourData.numEvent, numEvent, reportTolerance.numOfEvent, "NUM_OF_EVENT=%.0f ")
@@ -311,7 +311,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
 
     logIfWrong(data.backLdn, backLdn, reportTolerance.backLdn, "BACK_Ldn=%.1f ")
     logIfWrong(data.backLeq, backLeq, reportTolerance.backLeq, "BACK_Leq=%.1f ")
-    logIfWrong(data.eventLeq, eventLeq, reportTolerance.eventLeg, "EVENT_Leq=%.1f ")
+    logIfWrong(data.eventLeq, eventLeq, reportTolerance.eventLeq, "EVENT_Leq=%.1f ")
     logIfWrong(data.eventLdn, eventLdn, reportTolerance.eventLdn, "EVENT_Ldn=%.1f ")
     logIfWrong(data.totalLdn, totalLdn, reportTolerance.totalLdn, "TOTAL_Ldn=%.1f ")
     logIfWrong(data.numEvent, numEvent, reportTolerance.numOfEvent, "NUM_OF_EVENT=%.0f ")

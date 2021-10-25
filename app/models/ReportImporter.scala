@@ -184,8 +184,8 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
   def getDbfList(mainFolder: String, relativePath: String): List[Path] = {
     val paths: List[Path] = try {
       Files.list(Paths.get(mainFolder, relativePath)).iterator().asScala.toList
-    }catch {
-      case ex:NoSuchFileException=>
+    } catch {
+      case ex: NoSuchFileException =>
         Logger.error("s\"$mainFolder\\\\$relativePath no such files")
         List.empty[Path]
     }
@@ -1084,14 +1084,13 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       reportInfoOp.updateState(reportInfo._id, "匯入資料庫")
 
 
-
       self ! ImportHourlyNoise
       self ! ImportHourlyWeather
       self ! ImportDailyNoise
       self ! ImportMonthlyNoise
       self ! ImportQuarterNoise
       self ! ImportYearlyNoise
-    //self ! ImportTestNoiseEvent
+      //self ! ImportTestNoiseEvent
       //self ! ImportNoiseEvent
       self ! ImportSecondNoise
     // self ! ImportDailyFlight
@@ -1142,10 +1141,10 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       else {
         context become auditReportPhase(0)
         reportInfoOp.clearAllSubTasks(reportInfo._id)
-        try{
+        try {
           FileUtils.deleteDirectory(new File(mainFolder))
-        }catch{
-          case _=>
+        } catch {
+          case _: Throwable =>
         }
         reportInfo.state = "匯入完畢"
         reportInfoOp.upsertReportInfo(reportInfo)

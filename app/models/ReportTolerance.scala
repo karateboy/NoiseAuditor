@@ -2,7 +2,7 @@ package models
 
 import play.api.libs.json.Json
 
-case class ReportTolerance(totalLeq: Double, eventLeg: Double, backLeq: Double,
+case class ReportTolerance(totalLeq: Double, eventLeq: Double, backLeq: Double,
                            totalLdn: Double, eventLdn: Double, backLdn: Double,
                            totalEventSel: Double, numOfEvent: Int, duration: Int)
 

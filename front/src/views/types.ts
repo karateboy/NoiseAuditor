@@ -129,3 +129,15 @@ export interface ReportInfo {
   auditLog: string;
   tasks: Array<SubTask>;
 }
+
+export interface ReportTolerance {
+  totalLeq: number;
+  eventLeq: number;
+  backLeq: number;
+  totalLdn: number;
+  eventLdn: number;
+  backLdn: number;
+  totalEventSel: number;
+  numOfEvent: number;
+  duration: number;
+}
