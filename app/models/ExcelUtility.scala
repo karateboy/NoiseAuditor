@@ -131,7 +131,7 @@ class ExcelUtility @Inject()
     val format = wb.createDataFormat()
     val year = auditLog._id.reportID.airpotInfoID.year + 1911
     val quarter = auditLog._id.reportID.airpotInfoID.quarter
-    val start = new LocalDate(year, 1 + 3* quarter, 1).toLocalDateTime(LocalTime.MIDNIGHT)
+    val start = new LocalDate(year, 1 + 3* (quarter-1), 1).toLocalDateTime(LocalTime.MIDNIGHT)
     val end = start.plusMonths(3).minusSeconds(1)
     val mntNum = auditLog._id.mntNum
     def fillSecAuditReport(): Unit ={

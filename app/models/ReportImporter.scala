@@ -126,7 +126,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
 
   implicit val ec: ExecutionContextExecutorService = {
     import java.util.concurrent.Executors
-    ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(Runtime.getRuntime.availableProcessors()))
+    ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(Runtime.getRuntime.availableProcessors() / 2))
   }
 
   val terminalMap: Map[Int, String] = waitReadyResult(getTerminalMap())
@@ -204,7 +204,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       var dbfRow: DBFRow = null
       try {
         Logger.debug(s"Handle ${path.toAbsolutePath.toString}")
-        reader = new DBFReader(new BufferedInputStream(Files.newInputStream(path)))
+        reader = new DBFReader(Files.newInputStream(path))
         //reader = new DBFReader(Files.newInputStream(path))
         var row = 0
         do {
@@ -232,11 +232,16 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                 throw new Exception(s"$nmtNumber")
               }
               val startDate: LocalDate = try {
-                val dateStr = dbfRow.getString("START_DATE").trim
-                if (dateStr.contains("-"))
-                  LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
-                else
-                  LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
+                try {
+                  new LocalDate(dbfRow.getDate("START_DATE"))
+                } catch {
+                  case _: Throwable =>
+                    val dateStr = dbfRow.getString("START_DATE").trim
+                    if (dateStr.contains("-"))
+                      LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
+                    else
+                      LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
+                }
               } catch {
                 case ex: Throwable =>
                   fieldName = "START_DATE"
@@ -311,15 +316,17 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
     val subTask = SubTask(s"匯入${relativePath}", 0, fileCount.size)
     reportInfoOp.addSubTask(reportInfo._id, subTask)
 
-    val futureList: List[Future[Boolean]] =
-      for (path <- fileCount) yield {
-        val f =
-          Future {
-            blocking(handleFile(path, subTask.name))
+    val futureList: List[Future[Boolean]] = List(
+      Future {
+        blocking {
+          for (path <- fileCount) yield {
+            handleFile(path, subTask.name)
           }
-        f onFailure errorHandler
-        f
+          true
+        }
       }
+    )
+
 
     val allF = Future.sequence(futureList)
     allF onFailure errorHandler
@@ -1088,7 +1095,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       self ! ImportQuarterNoise
       self ! ImportYearlyNoise
       //self ! ImportTestNoiseEvent
-      //self ! ImportNoiseEvent
+      self ! ImportNoiseEvent
       self ! ImportSecondNoise
     // self ! ImportDailyFlight
 
