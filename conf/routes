@@ -62,6 +62,7 @@ GET     /ReportInfo/:year/:quarter/:airportID/:version               controllers
 DELETE  /ReportInfo/:year/:quarter/:airportID/:version               controllers.HomeController.deleteReportInfo(year:Int, quarter:Int, airportID:Int, version:Int)
 GET     /ReportInfo/ReportTolerance/:year/:quarter/:airportID/:version controllers.HomeController.getReportTolerance(year:Int, quarter:Int, airportID:Int, version:Int)
 POST    /ReportInfo/ReportTolerance/:year/:quarter/:airportID/:version controllers.HomeController.setReportTolerance(year:Int, quarter:Int, airportID:Int, version:Int)
+GET     /ImportErrorLog/:year/:quarter/:airportID/:version  controllers.HomeController.getImportErrorLog(year:Int, quarter:Int, airportID:Int, version:Int)
 
 POST    /Reaudit                                                    controllers.HomeController.reauditReport()
 GET     /AuditReport/:year/:quarter/:airportID/:version             controllers.HomeController.getAuditReport(year:Int, quarter:Int, airportID:Int, version:Int)

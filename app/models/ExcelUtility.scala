@@ -231,4 +231,28 @@ class ExcelUtility @Inject()
     }else
       targetFile
   }
+
+  def getImportErrorLog(logs: Seq[ImportErrorLog]): File ={
+    val (reportFilePath, pkg, wb) = prepareTemplate("importErrorLog.xlsx")
+    val evaluator = wb.getCreationHelper().createFormulaEvaluator()
+    val format = wb.createDataFormat();
+    val sheet = wb.getSheetAt(0)
+
+    var rowNum = 1
+    for(log<-logs){
+      for(entry<-log.logs){
+        val row = sheet.createRow(rowNum)
+        row.createCell(0).setCellValue(entry.fileName)
+        row.createCell(1).setCellValue(entry.terminal)
+        row.createCell(2).setCellValue(entry.time)
+        row.createCell(3).setCellValue(entry.dataType)
+        row.createCell(4).setCellValue(entry.fieldName)
+        row.createCell(5).setCellValue(entry.errorInfo)
+        row.createCell(5).setCellValue(entry.value)
+        rowNum = rowNum + 1
+      }
+    }
+
+    finishExcel(reportFilePath, pkg, wb)
+  }
 }

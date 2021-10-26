@@ -232,26 +232,24 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
                 throw new Exception(s"$nmtNumber")
               }
               val startDate: LocalDate = try {
-                LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
+                val dateStr = dbfRow.getString("START_DATE").trim
+                if (dateStr.contains("-"))
+                  LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy-MM-dd"))
+                else
+                  LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
               } catch {
-                case _: IllegalArgumentException =>
-                  try {
-                    LocalDate.parse(dbfRow.getString("START_DATE").trim, DateTimeFormat.forPattern("yyyy/MM/dd"))
-                  } catch {
-                    case ex: Throwable =>
-                      try {
-                        new LocalDate(dbfRow.getDate("START_DATE"))
-                      } catch {
-                        case ex: Throwable =>
-                          fieldName = "START_DATE"
-                          reason = s"第${row}行格式錯誤"
-                          throw ex
-                      }
-                  }
+                case ex: Throwable =>
+                  fieldName = "START_DATE"
+                  reason = s"第${row}行格式錯誤"
+                  throw ex
               }
 
               val startTime = try {
-                LocalTime.parse(dbfRow.getString("START_TIME").trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                val timeStr = dbfRow.getString("START_TIME").trim
+                if (timeStr.length > 5)
+                  LocalTime.parse(dbfRow.getString("START_TIME").trim, DateTimeFormat.forPattern("HH:mm:ss"))
+                else
+                  LocalTime.parse(dbfRow.getString("START_TIME").trim, DateTimeFormat.forPattern("HH:mm"))
               } catch {
                 case ex: Throwable =>
                   fieldName = "START_TIME"
@@ -327,7 +325,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
     allF onFailure errorHandler
     allF onComplete ({
       case Success(value) =>
-        Logger.info(s"Task complete $value")
         self ! TaskComplete
       case Failure(exception) =>
         Logger.error(s"Task failed $relativePath", exception)
@@ -1166,7 +1163,6 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
         (reportInfo.quarter - 1) * 3 + 1, 1, 0, 0)
       val end = start.plusMonths(3)
       val d: Duration = new Duration(start, end)
-      Logger.info(s"total ${terminalMap.size} ${d.getStandardDays}")
       for (mntNum <- terminalMap.keys) {
         val subTask = SubTask(s"稽核${terminalMap(mntNum)}噪音資料", 0, d.getStandardDays.toInt)
         reportInfoOp.addSubTask(reportInfo._id, subTask)

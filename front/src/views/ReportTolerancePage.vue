@@ -53,13 +53,11 @@
       </b-row>
       <b-row>
         <b-col offset-md="3">
-          <b-button
-            v-b-tooltip.hover
-            variant="gradient-primary"
-            class="mr-1"
-            @click="save"
-          >
+          <b-button variant="gradient-primary" class="mr-1" @click="save">
             設定
+          </b-button>
+          <b-button variant="gradient-primary" class="mr-2" @click="reset">
+            取消
           </b-button>
         </b-col>
       </b-row>
@@ -108,6 +106,9 @@ export default Vue.extend({
   methods: {
     save() {
       this.$emit('rt-changed', this.rt);
+    },
+    reset() {
+      this.$emit('rt-end');
     },
   },
 });

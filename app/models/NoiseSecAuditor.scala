@@ -162,10 +162,6 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         dt >= hour && dt < hour.plusHours(1)
       }).toList
 
-      if (events.size == 0) {
-        return None
-      }
-
       def logIfWrong(v: Double, auditV: Double, error: Double, msgTag: String) = {
         if (v >= auditV + error || v < auditV - error) {
           msg1 = msg1 + msgTag.format(v)
@@ -209,9 +205,16 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         sum / hourData.activity
       })
 
-      val eventLeq = 10 * Math.log10(events.map(evt => Math.pow(10, evt.eventLeq / 10) * evt.duration).sum / hourData.activity)
+      val eventLeq = if(events.length == 0)
+        0
+      else
+        10 * Math.log10(events.map(evt => Math.pow(10, evt.eventLeq / 10) * evt.duration).sum / hourData.activity)
 
-      val eventSEL = eventLeq + 10 * Math.log10(hourData.activity)
+
+      val eventSEL = if(eventLeq != 0)
+        eventLeq + 10 * Math.log10(hourData.activity)
+      else
+        0
 
       val backLeq = 10 * Math.log10(Math.pow(10, totalLeq / 10) - Math.pow(10, eventLeq / 10))
 
@@ -300,12 +303,24 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
 
     val hourCount = verifiedHrList.size
     val totalLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLeq / 10) * 3600).sum / (3600 * hourCount))
-    val eventLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLeq / 10) * 3600).sum / (3600 * hourCount))
+    val eventLeq = {
+      val eventLeqList = verifiedHrList.map(_.eventLeq)
+      if(eventLeqList.forall(_ == 0))
+        0
+      else
+        10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLeq / 10) * 3600).sum / (3600 * hourCount))
+    }
     val totalLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLdn / 10) * 3600).sum / (3600 * hourCount))
     val eventLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLdn / 10) * 3600).sum / (3600 * hourCount))
     val backLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.backLdn / 10) * 3600).sum / (3600 * hourCount))
     val backLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.backLeq / 10) * 3600).sum / (3600 * hourCount))
-    val eventSEL = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventSEL / 10)).sum)
+    val eventSEL = {
+      val eventSelList = verifiedHrList.map(_.eventSEL)
+      if(eventSelList.forall(_ == 0))
+        0
+      else
+        10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventSEL / 10)).sum)
+    }
     val numEvent = verifiedHrList.map(_.numEvent).sum
     val duration = verifiedHrList.map(_.duration).sum
 

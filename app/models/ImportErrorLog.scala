@@ -62,4 +62,11 @@ class ImportErrorLogOp @Inject()(mongoDB: MongoDB) {
     f onFailure(errorHandler)
     f
   }
+
+  def get(_id:ReportID) = {
+    val filter = Filters.equal("_id.reportID", _id)
+    val f = collection.find(filter).toFuture()
+    f onFailure(errorHandler)
+    f
+  }
 }

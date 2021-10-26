@@ -37,7 +37,10 @@
               @click="reauditReport"
               >重新稽核</b-button
             >
-            <b-button class="mr-2" variant="outline-primary" disabled
+            <b-button
+              class="mr-2"
+              variant="outline-primary"
+              @click="downloadImportErrorLog"
               >下載資料格式錯誤表</b-button
             >
             <b-button
@@ -72,6 +75,7 @@
         <report-tolerance-page
           :report-tolerance="reportTolerance"
           @rt-changed="handleRTchanged"
+          @rt-end="endModal"
         ></report-tolerance-page>
       </b-modal>
     </b-card>
@@ -312,11 +316,25 @@ export default Vue.extend({
             icon: 'success',
             confirmButtonText: '確定',
           });
+          this.$bvModal.hide('reportToleranceModal');
           await this.getReportInfo();
         }
       } catch (err) {
         throw new Error('failed to handle RT');
       }
+    },
+    endModal() {
+      this.$bvModal.hide('reportToleranceModal');
+    },
+    downloadImportErrorLog() {
+      const baseUrl =
+        process.env.NODE_ENV === 'development' ? 'http://localhost:9000/' : '/';
+      const year = this.form._id?.airpotInfoID.year;
+      const quarter = this.form._id?.airpotInfoID.quarter;
+      const airportID = this.form._id?.airpotInfoID.airportID;
+      const version = this.form._id?.version;
+      const url = `${baseUrl}ImportErrorLog/${year}/${quarter}/${airportID}/${version}`;
+      window.open(url);
     },
   },
 });

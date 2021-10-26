@@ -374,5 +374,26 @@ class HomeController @Inject()(environment: play.api.Environment, userOp: UserOp
     }
   }
 
+  def getImportErrorLog(year: Int, quarter: Int, airportID: Int, version: Int) = Security.Authenticated.async {
+    val reportID = ReportID(AirportInfoID(year, quarter, airportID), version)
+    for{ret<-importErrorLogOp.get(reportID)
+        airportList<- airportOp.getList()
+        } yield {
+      val excelFile = excelUtility.getImportErrorLog(ret)
+      val airportOpt = airportList.find(p=> p._id == airportID)
+      val airportName = if(airportOpt.isEmpty)
+        "未知的機場"
+      else
+        airportOpt.get.name
+      //val downloadFileName = s"${airportName}${year}年${quarter}季第${version}版格式錯誤列表"
+      val downloadFileName = s"errorlog"
+      Ok.sendFile(excelFile, fileName = _ =>
+        play.utils.UriEncoding.encodePathSegment(downloadFileName + ".xlsx", "UTF-8"),
+        onClose = () => {
+          Files.deleteIfExists(excelFile.toPath())
+        })
+    }
+  }
+
   case class EditData(id: String, data: String)
 }
