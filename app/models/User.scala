@@ -16,7 +16,7 @@ case class User(_id: String, password: String, name: String, isAdmin: Boolean, g
 import javax.inject._
 
 @Singleton
-class UserOp @Inject()(mongoDB: MongoDB, groupOp: GroupOp, monitorTypeOp: MonitorTypeOp) {
+class UserOp @Inject()(mongoDB: MongoDB, groupOp: GroupOp) {
 
   import org.mongodb.scala._
 
@@ -37,7 +37,7 @@ class UserOp @Inject()(mongoDB: MongoDB, groupOp: GroupOp, monitorTypeOp: Monito
       case count: Long =>
         if (count == 0) {
           val defaultUser = User("sales@wecc.com.tw", "abc123", "Aragorn", true, Some(Group.PLATFORM_ADMIN),
-            Seq(MonitorType.PM25))
+            Seq.empty[String])
           Logger.info("Create default user:" + defaultUser.toString())
           newUser(defaultUser)
         }

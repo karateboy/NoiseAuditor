@@ -115,12 +115,18 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         for {i <- 0 to event.duration
              timestamp = eventStart.plusSeconds(i)
              mintuePart = timestamp.withSecondOfMinute(0)
-             minRecord = dayMinMap(mintuePart.toDate)
-             secNum = timestamp.getSecondOfMinute
              } yield {
-          if (secNum < minRecord.records.length) {
-            Some(minRecord.records(secNum))
-          } else {
+          if(dayMinMap.contains(mintuePart.toDate)){
+            val minRecord = dayMinMap(mintuePart.toDate)
+            val secNum = timestamp.getSecondOfMinute
+            if (secNum < minRecord.records.length) {
+              Some(minRecord.records(secNum))
+            } else {
+              val msg = s"缺少對應每秒資料無法稽核"
+              logList = logList :+ LogEntry(mntNum, event._id.time, AuditLog.DataTypeNoiseEvent, msg)
+              None
+            }
+          }else{
             val msg = s"缺少對應每秒資料無法稽核"
             logList = logList :+ LogEntry(mntNum, event._id.time, AuditLog.DataTypeNoiseEvent, msg)
             None

@@ -16,7 +16,6 @@ class Module extends AbstractModule with AkkaGuiceSupport {
   Logger.info("Module...")
   override def configure() = {
     bind(classOf[MongoDB])
-    bind(classOf[MonitorTypeOp])
 
     // bindActor[DataCollectManager]("dataCollectManager")
 

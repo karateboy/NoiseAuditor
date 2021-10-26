@@ -26,28 +26,6 @@ GET      /Groups                                                                
 PUT      /Group/:id                                                               controllers.HomeController.updateGroup(id)
 DELETE   /Group/:id                                                               controllers.HomeController.deleteGroup(id)
 
-GET      /HistoryTrend/:monitor/:monitorType/:reportUnit/:statusFilter/:start/:end         controllers.Query.historyTrendChart(monitor, monitorType, reportUnit, statusFilter, start:Long, end:Long, outputTypeStr="html")
-GET      /HistoryTrend/excel/:monitorType/:reportUnit/:statusFilter/:start/:end            controllers.Query.historyTrendChart(monitor, monitorType, reportUnit, statusFilter, start:Long, end:Long, outputTypeStr="excel")
-
-GET      /HistoryReport/:monitor/:monitorType/:tabType/:start/:end                controllers.Query.historyData(monitor, monitorType, tabType, start: Long, end: Long)
-GET      /LatestData/:monitor/:monitorType/:tabType                               controllers.Query.latestData(monitor, monitorType, tabType)
-GET      /RealtimeStatus                                                          controllers.Query.realtimeStatus()
-
-GET      /AlarmReport/:level/:start/:end                                          controllers.Query.alarmReport(level:Int, start:Long, end:Long)
-
-#Report
-GET      /monitorReport/:reportType/:reportDate                                   controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="html")
-GET      /PDF/monitorReport/:reportType/:reportDate                               controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="pdf")
-GET      /Excel/monitorReport/:reportType/:reportDate                             controllers.Report.getMonitorReport(reportType, reportDate:Long, outputTypeStr="excel")
-
-GET      /MonthlyHourReport/:monitorType/:reportDate                              controllers.Report.monthlyHourReport(monitorType, reportDate:Long, outputTypeStr="html")
-
-GET      /Record/:monitorType/:start/:end                                         controllers.Query.recordList(monitorType, start:Long, end:Long)
-
-GET      /HourRecord/:start/:end                                                  controllers.Query.hourRecordList(start:Long, end:Long)
-GET      /MinRecord/:start/:end                                                   controllers.Query.minRecordList(start:Long, end:Long)
-GET      /AlertRecord/:start/end                                                  controllers.Query.alertRecordList(start:Long, end:Long)
-
 #Airport
 GET     /Airports                                                    controllers.HomeController.getAirportList
 POST    /AirportInfo                                                 controllers.HomeController.upsertAirportInfo

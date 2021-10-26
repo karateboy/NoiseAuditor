@@ -61,26 +61,6 @@ object ModelHelper {
       degree + 360
   }
 
-  def windAvg(windSpeed: Seq[Record], windDir: Seq[Record]): Double = {
-    if (windSpeed.length != windDir.length)
-      Logger.error(s"windSpeed #=${windSpeed.length} windDir #=${windDir.length}")
-
-    val windRecord = windSpeed.zip(windDir)
-    val wind_sin = windRecord.map(v => v._1.value * Math.sin(Math.toRadians(v._2.value))).sum
-    val wind_cos = windRecord.map(v => v._1.value * Math.cos(Math.toRadians(v._2.value))).sum
-    windAvg(wind_sin, wind_cos)
-  }
-
-  def windAvg(windSpeed: List[Double], windDir: List[Double]): Double = {
-    if (windSpeed.length != windDir.length)
-      Logger.error(s"windSpeed #=${windSpeed.length} windDir #=${windDir.length}")
-
-    val windRecord = windSpeed.zip(windDir)
-    val wind_sin = windRecord.map(v => v._1 * Math.sin(Math.toRadians(v._2))).sum
-    val wind_cos = windRecord.map(v => v._1 * Math.cos(Math.toRadians(v._2))).sum
-    windAvg(wind_sin, wind_cos)
-  }
-
   def getPeriods(start: DateTime, endTime: DateTime, d: Period): List[DateTime] = {
     import scala.collection.mutable.ListBuffer
 
