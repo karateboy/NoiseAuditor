@@ -122,14 +122,15 @@ class ExcelUtility @Inject()
       }
     }
 
-    def fillNoiseMonthReport(): Unit ={
-      val sheet = wb.getSheetAt(4)
-      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseDay).sortBy(_.time)
+
+    def fillPeriodReport(sheetIndex:Int, tag:String): Unit ={
+      val sheet = wb.getSheetAt(sheetIndex)
+      val logs = auditLog.logs.filter(p=>p.dataType == tag).sortBy(_.time)
       sheet.getRow(0).getCell(0)
-        .setCellValue(s"稽核資料：${terminalMap(mntNum)}每月噪音監測資料")
+        .setCellValue(s"稽核資料：${terminalMap(mntNum)}$tag")
 
       sheet.getRow(1).getCell(0)
-        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每月資料")
+        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 $tag")
 
       for((log, idx)<- logs.zipWithIndex){
         val row = sheet.createRow(16 + idx)
@@ -144,7 +145,10 @@ class ExcelUtility @Inject()
     fillSecAuditReport()
     fillNoiseEventReport()
     fillNoiseHourReport()
-    fillNoiseDayReport()
+    fillPeriodReport(3, AuditLog.DataTypeNoiseDay)
+    fillPeriodReport(4, AuditLog.DataTypeNoiseMonth)
+    fillPeriodReport(5, AuditLog.DataTypeNoiseQuarter)
+    fillPeriodReport(6, AuditLog.DataTypeNoiseYear)
 
     def getProperFileName(name:String) = {
       name.replace("^\\.+", "").replaceAll("[\\\\/:*?\"<>|]", "")

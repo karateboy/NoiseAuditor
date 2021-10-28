@@ -46,7 +46,7 @@ object NoiseSecAuditor {
     }
   }
 
-  def getMonthIterator(start: DateTime, end: DateTime, step:Int): Iterator[nscala_time.time.Imports.DateTime] = new Iterator[DateTime] {
+  def getMonthIterator(start: DateTime, end: DateTime, step: Int): Iterator[nscala_time.time.Imports.DateTime] = new Iterator[DateTime] {
     private var current = start
 
     override def hasNext: Boolean = current < end
@@ -67,12 +67,6 @@ object NoiseSecAuditor {
 
   case class GetNoiseDayData(day: DateTime)
 
-  case class GetNoiseMonthData(start: DateTime)
-
-  case class GetNoiseQuarterData(start: DateTime)
-
-  case class GetNoiseYearData(start: DateTime)
-
   case class AuditNoiseSecData(dt: DateTime, data: Seq[MinRecord])
 
   case class AuditNoiseEventData(dt: DateTime, data: Seq[EventRecord])
@@ -81,11 +75,17 @@ object NoiseSecAuditor {
 
   case class AuditNoiseDayData(dt: DateTime, data: Seq[NoiseRecord])
 
-  case class AuditNoiseMonthData(start: DateTime, data: Seq[NoiseRecord])
+  case class AuditNoiseMonthData(data: Seq[NoiseRecord])
 
-  case class AuditNoiseQuarterData(start: DateTime, data: Seq[NoiseRecord])
+  case class AuditNoiseQuarterData(data: Seq[NoiseRecord])
 
-  case class AuditNoiseYearData(start: DateTime, data: Seq[NoiseRecord])
+  case class AuditNoiseYearData(data: Seq[NoiseRecord])
+
+  case object GetNoiseMonthData
+
+  case object GetNoiseQuarterData
+
+  case object GetNoiseYearData
 
   case object NoiseSecAuditComplete
 
@@ -160,20 +160,22 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         }
       if (!eventSecRecordOpts.contains(None)) {
         val eventSecSel: Seq[Double] = eventSecRecordOpts.flatten.map(_.value)
-        val eventLeq = 10 * Math.log10(eventSecSel.map(v => Math.pow(10, v / 10)).sum) - Math.log10(event.duration)
+        val eventLeq = 10 * Math.log10(eventSecSel.map(v => Math.pow(10, v / 10)).sum / event.duration)
         var msg1 = "原始資料:"
         var msg2 = "稽核資料:"
         if (event.eventLeq > eventLeq + reportTolerance.eventLeq || event.eventLeq < eventLeq - reportTolerance.eventLeq) {
           msg1 = msg1 + "EVENT_Leq=%.1f ".format(event.eventLeq)
           msg2 = msg2 + "EVENT_Leq=%.1f ".format(eventLeq)
         }
-        val eventSel = eventLeq + 2 * Math.log10(event.duration)
+        val eventSel = eventLeq + 10 * Math.log10(event.duration)
         if (event.eventSel > eventSel + reportTolerance.eventLeq || event.eventSel < eventSel - reportTolerance.eventLeq) {
           msg1 = msg1 + "EVENT_SEL=%.1f".format(event.eventSel)
           msg2 = msg2 + "EVENT_SEL=%.1f".format(eventSel)
         }
-        if (msg1 != "原始資料:")
-          logList = logList :+ LogEntry(mntNum, event._id.time, AuditLog.DataTypeNoiseEvent, s"$msg1\n$msg2")
+        if (msg1 != "原始資料:") {
+          logList = logList :+ LogEntry(mntNum, event._id.time, AuditLog.DataTypeNoiseEvent, s"$msg1")
+          logList = logList :+ LogEntry(mntNum, event._id.time, AuditLog.DataTypeNoiseEvent, s"$msg2")
+        }
       }
     }
 
@@ -211,10 +213,8 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
                 Logger.error(s"$mntNum $m has only ${minRecord.records.size} sec")
 
               minRecord.records
-            } else {
-              Logger.error(s"dayMinMap has no data $m")
+            } else
               Seq.empty[SecRecord]
-            }
           }
 
         val hourSecSelList = hourSeqSecSELs.toList
@@ -227,28 +227,29 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
           LogEntry(mntNum, hour, AuditLog.DataTypeNoiseHour,
             s"稽核資料: 每秒噪音監測資料秒數${hourSecSELs.size}")
         )
-
         auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum), logs)
-        return None
       }
 
       val totalLeq = 10 * Math.log10({
         val sum = hourSecSELs.map(sel => Math.pow(10, sel.value / 10)).sum
-        sum / hourData.activity
+        sum / hourSecSELs.size
       })
 
       val eventLeq = if (events.length == 0)
         0
       else
-        10 * Math.log10(events.map(evt => Math.pow(10, evt.eventLeq / 10) * evt.duration).sum / hourData.activity)
+        10 * Math.log10(events.map(evt => Math.pow(10, evt.eventLeq / 10) * evt.duration).sum / hourSecSELs.size)
 
 
       val eventSEL = if (eventLeq != 0)
-        eventLeq + 10 * Math.log10(hourData.activity)
+        eventLeq + 10 * Math.log10(hourSecSELs.size)
       else
         0
 
-      val backLeq = 10 * Math.log10(Math.pow(10, totalLeq / 10) - Math.pow(10, eventLeq / 10))
+      val backLeq = if(eventLeq != 0)
+        10 * Math.log10(Math.pow(10, totalLeq / 10) - Math.pow(10, eventLeq / 10))
+      else
+        totalLeq
 
       val totalLdn = if (totalLeq != 0 && (hour.getHourOfDay < 7 || hour.getHourOfDay >= 22))
         totalLeq + 10
@@ -373,26 +374,25 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     }
   }
 
-  def checkPeriodData(begin:DateTime, dataType:String, dataReport: Seq[NoiseRecord], verifiedHourMap: Map[DateTime, VerifiedHourRecord]) {
-    if (dataReport.isEmpty) {
-      val msg = s"缺少$dataType"
-      auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum),
-        Seq(LogEntry(mntNum, begin, dataType, msg)))
-    } else {
-      val dataReportMap: Predef.Map[Date, NoiseRecord] = dataReport.map(r=>r._id.time -> r).toMap
+  def checkPeriodData(dataType: String, reportList: Seq[NoiseRecord], verifiedHourMap: Map[DateTime, VerifiedHourRecord]) {
+    val dataReportMap: Predef.Map[Date, NoiseRecord] = reportList.map(r => r._id.time -> r).toMap
+    Logger.info(s"$dataType keys = ${dataReportMap.keys.toList}")
+    val step = dataType match {
+      case AuditLog.DataTypeNoiseMonth =>
+        1
+      case AuditLog.DataTypeNoiseQuarter =>
+        3
+      case AuditLog.DataTypeNoiseYear =>
+        12
+    }
 
-      for (data <- dataReport) {
-        val start = new DateTime(data._id.time)
-        val step = dataType match {
-          case AuditLog.DataTypeNoiseMonth =>
-            1
-          case AuditLog.DataTypeNoiseQuarter =>
-            3
-          case AuditLog.DataTypeNoiseYear =>
-            12
-        }
-        val end = start.plusMonths(step)
-        val iterator = getMonthIterator(start, end, step)
+    for (startDate <- getMonthIterator(start, end, step)) {
+      if (!dataReportMap.contains(startDate.toDate)) {
+        val msg = s"缺少${dataType}"
+        auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum),
+          Seq(LogEntry(mntNum, startDate, dataType, msg)))
+      } else {
+        val data = dataReportMap(startDate.toDate)
         val msg1Header = "原始資料: "
         val msg2Header = "稽核資料: "
         var msg1 = msg1Header
@@ -406,7 +406,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         }
 
         val verifiedHrList: List[VerifiedHourRecord] = verifiedHourMap.filter(
-          p => p._1 >= start && p._1 < end).values.toList
+          p => p._1 >= startDate && p._1 < startDate.plusMonths(step)).values.toList
         val hourCount = verifiedHrList.size
         val totalLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLeq / 10) * 3600).sum / (3600 * hourCount))
         val eventLeq = {
@@ -441,8 +441,8 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         logIfWrong(data.duration, duration, reportTolerance.duration, "DURATION=%.0f")
 
         if (msg1 != msg1Header) {
-          val logs = Seq(LogEntry(mntNum, start, AuditLog.DataTypeNoiseDay, msg1),
-            LogEntry(mntNum, start, AuditLog.DataTypeNoiseDay, msg2))
+          val logs = Seq(LogEntry(mntNum, startDate, dataType, msg1),
+            LogEntry(mntNum, startDate, dataType, msg2))
           auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum), logs)
         }
       }
@@ -517,8 +517,10 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
           context become auditStateMachine(secDataMap, eventMap, verifiedHourMap ++ verifiedMap)
           self ! GetNoiseDayData(thisDay)
 
-          if (thisDay.plusDays(1) < end)
+          if (thisDay.plusDays(1) < end) {
             self ! GetNoiseSecData(thisDay.plusDays(1))
+          } else
+            self ! GetNoiseMonthData
         }
       }
     case GetNoiseDayData(day) =>
@@ -540,27 +542,63 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
             case ex: Throwable =>
               Logger.error(s"failed to audit day data", ex)
           }
-
-          if (thisDay.plusDays(1) >= end) {
-            reportInfoOp.removeSubTask(reportInfo._id, taskName)
-            context.parent ! NoiseSecAuditComplete
-          }
         }
       }
-    case GetNoiseMonthData(start) =>
+    case GetNoiseMonthData =>
       val filter = Filters.and(equal("_id.terminalID", mntNum),
-        gte("_id.time", start.toDate), lt("_id.time", start.plusMonths(1).toDate()))
+        gte("_id.time", start.toDate), lt("_id.time", end.toDate()))
       val f = reportRecordOp.getNoiseCollection(ReportRecord.Month).find(filter).toFuture()
       f onFailure errorHandler
       for (data <- f)
-        self ! AuditNoiseMonthData(start, data)
+        self ! AuditNoiseMonthData(data)
 
-    case AuditNoiseMonthData(start, data) =>
+    case AuditNoiseMonthData(data) =>
       Future {
         blocking {
           try {
-            //checkDayData(thisDay, data, verifiedHourMap)
-            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, taskName)
+            checkPeriodData(AuditLog.DataTypeNoiseMonth, data, verifiedHourMap)
+            self ! GetNoiseQuarterData
+          } catch {
+            case ex: Throwable =>
+              Logger.error(s"failed to audit day data", ex)
+          }
+        }
+      }
+    case GetNoiseQuarterData =>
+      val filter = Filters.and(equal("_id.terminalID", mntNum),
+        gte("_id.time", start.toDate), lt("_id.time", end.toDate()))
+      val f = reportRecordOp.getNoiseCollection(ReportRecord.Quarter).find(filter).toFuture()
+      f onFailure errorHandler
+      for (data <- f)
+        self ! AuditNoiseQuarterData(data)
+
+    case AuditNoiseQuarterData(data) =>
+      Future {
+        blocking {
+          try {
+            checkPeriodData(AuditLog.DataTypeNoiseQuarter, data, verifiedHourMap)
+            self ! GetNoiseYearData
+          } catch {
+            case ex: Throwable =>
+              Logger.error(s"failed to audit day data", ex)
+          }
+        }
+      }
+    case GetNoiseYearData =>
+      val filter = Filters.and(equal("_id.terminalID", mntNum),
+        gte("_id.time", start.toDate), lt("_id.time", end.toDate()))
+      val f = reportRecordOp.getNoiseCollection(ReportRecord.Year).find(filter).toFuture()
+      f onFailure errorHandler
+      for (data <- f)
+        self ! AuditNoiseYearData(data)
+
+    case AuditNoiseYearData(data) =>
+      Future {
+        blocking {
+          try {
+            checkPeriodData(AuditLog.DataTypeNoiseYear, data, verifiedHourMap)
+            reportInfoOp.removeSubTask(reportInfo._id, taskName)
+            context.parent ! NoiseSecAuditComplete
           } catch {
             case ex: Throwable =>
               Logger.error(s"failed to audit day data", ex)
