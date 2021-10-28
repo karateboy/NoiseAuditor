@@ -21,6 +21,9 @@ object AuditLog {
   val DataTypeNoiseEvent = "噪音事件監測資料"
   val DataTypeNoiseHour = "每小時噪音監測資料"
   val DataTypeNoiseDay = "每日噪音監測資料"
+  val DataTypeNoiseMonth = "每月噪音監測資料"
+  val DataTypeNoiseQuarter = "每季噪音監測資料"
+  val DataTypeNoiseYear = "一年噪音監測資料"
 }
 
 @Singleton

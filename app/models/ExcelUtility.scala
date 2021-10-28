@@ -48,7 +48,7 @@ class ExcelUtility @Inject()
     def fillSecAuditReport(): Unit ={
       val sheet = wb.getSheetAt(0)
       // Just take first 500
-      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseSec).take(500)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseSec).take(500).sortBy(f=>f.time)
       sheet.getRow(0).getCell(0)
         .setCellValue(s"稽核資料：${terminalMap(mntNum)}每秒噪音監測資料")
 
@@ -67,7 +67,7 @@ class ExcelUtility @Inject()
 
     def fillNoiseEventReport(): Unit ={
       val sheet = wb.getSheetAt(1)
-      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseEvent).take(500)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseEvent).take(500).sortBy(_.time)
       sheet.getRow(0).getCell(0)
         .setCellValue(s"稽核資料：${terminalMap(mntNum)}事件監測資料")
 
@@ -86,7 +86,7 @@ class ExcelUtility @Inject()
 
     def fillNoiseHourReport(): Unit ={
       val sheet = wb.getSheetAt(2)
-      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseHour)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseHour).sortBy(_.time)
       sheet.getRow(0).getCell(0)
         .setCellValue(s"稽核資料：${terminalMap(mntNum)}每小時資料")
 
@@ -105,12 +105,31 @@ class ExcelUtility @Inject()
 
     def fillNoiseDayReport(): Unit ={
       val sheet = wb.getSheetAt(3)
-      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseDay)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseDay).sortBy(_.time)
       sheet.getRow(0).getCell(0)
         .setCellValue(s"稽核資料：${terminalMap(mntNum)}每日噪音監測資料")
 
       sheet.getRow(1).getCell(0)
-        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每小時資料")
+        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每日資料")
+
+      for((log, idx)<- logs.zipWithIndex){
+        val row = sheet.createRow(16 + idx)
+        var cell = row.createCell(0)
+        val dt = new DateTime(log.time)
+        cell.setCellValue(dt.toString("YYYY/MM/dd"))
+        cell = row.createCell(1)
+        cell.setCellValue(log.msg)
+      }
+    }
+
+    def fillNoiseMonthReport(): Unit ={
+      val sheet = wb.getSheetAt(4)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseDay).sortBy(_.time)
+      sheet.getRow(0).getCell(0)
+        .setCellValue(s"稽核資料：${terminalMap(mntNum)}每月噪音監測資料")
+
+      sheet.getRow(1).getCell(0)
+        .setCellValue(s"稽核時間：${start.toString("yyyy/MM/dd")}到${end.toString("yyyy/MM/dd")} 23:59:59 每月資料")
 
       for((log, idx)<- logs.zipWithIndex){
         val row = sheet.createRow(16 + idx)

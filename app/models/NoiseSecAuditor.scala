@@ -46,6 +46,19 @@ object NoiseSecAuditor {
     }
   }
 
+  def getMonthIterator(start: DateTime, end: DateTime, step:Int): Iterator[nscala_time.time.Imports.DateTime] = new Iterator[DateTime] {
+    private var current = start
+
+    override def hasNext: Boolean = current < end
+
+    override def next(): time.Imports.DateTime = {
+      val ret = current
+      current = current.plusMonths(step)
+      ret
+    }
+  }
+
+
   case class GetNoiseSecData(day: DateTime)
 
   case class GetNoiseEventData(dt: DateTime)
@@ -53,6 +66,12 @@ object NoiseSecAuditor {
   case class GetNoiseHourData(day: DateTime)
 
   case class GetNoiseDayData(day: DateTime)
+
+  case class GetNoiseMonthData(start: DateTime)
+
+  case class GetNoiseQuarterData(start: DateTime)
+
+  case class GetNoiseYearData(start: DateTime)
 
   case class AuditNoiseSecData(dt: DateTime, data: Seq[MinRecord])
 
@@ -62,6 +81,12 @@ object NoiseSecAuditor {
 
   case class AuditNoiseDayData(dt: DateTime, data: Seq[NoiseRecord])
 
+  case class AuditNoiseMonthData(start: DateTime, data: Seq[NoiseRecord])
+
+  case class AuditNoiseQuarterData(start: DateTime, data: Seq[NoiseRecord])
+
+  case class AuditNoiseYearData(start: DateTime, data: Seq[NoiseRecord])
+
   case object NoiseSecAuditComplete
 
   case object StartAudit
@@ -70,7 +95,7 @@ object NoiseSecAuditor {
 }
 
 case class VerifiedHourRecord(hour: DateTime, totalLeq: Double, eventLeq: Double, totalLdn: Double, eventLdn: Double,
-                              numEvent: Int, duration: Int, backLeq: Double, backLdn: Double, eventSEL:Double)
+                              numEvent: Int, duration: Int, backLeq: Double, backLdn: Double, eventSEL: Double)
 
 class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, reportRecordOp: ReportRecordOp,
                       reportTolerance: ReportTolerance, auditLogOp: AuditLogOp, taskName: String,
@@ -88,7 +113,8 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
 
     for (now <- minList) {
       if (!dayMap.contains(now.toDate)) {
-        val msg = s"缺少資料"
+        val end = now.plusMinutes(1).plusSeconds(-1)
+        val msg = s"${now.toString("YYYY/MM/dd HH:mm:ss")}~${end.toString("YYYY/MM/dd HH:mm:ss")} 資料缺失"
         logList = logList :+ LogEntry(mntNum, now.toDate, AuditLog.DataTypeNoiseSec, msg)
       } else {
         val minData = dayMap(now.toDate)
@@ -116,7 +142,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
              timestamp = eventStart.plusSeconds(i)
              mintuePart = timestamp.withSecondOfMinute(0)
              } yield {
-          if(dayMinMap.contains(mintuePart.toDate)){
+          if (dayMinMap.contains(mintuePart.toDate)) {
             val minRecord = dayMinMap(mintuePart.toDate)
             val secNum = timestamp.getSecondOfMinute
             if (secNum < minRecord.records.length) {
@@ -126,7 +152,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
               logList = logList :+ LogEntry(mntNum, event._id.time, AuditLog.DataTypeNoiseEvent, msg)
               None
             }
-          }else{
+          } else {
             val msg = s"缺少對應每秒資料無法稽核"
             logList = logList :+ LogEntry(mntNum, event._id.time, AuditLog.DataTypeNoiseEvent, msg)
             None
@@ -211,30 +237,30 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         sum / hourData.activity
       })
 
-      val eventLeq = if(events.length == 0)
+      val eventLeq = if (events.length == 0)
         0
       else
         10 * Math.log10(events.map(evt => Math.pow(10, evt.eventLeq / 10) * evt.duration).sum / hourData.activity)
 
 
-      val eventSEL = if(eventLeq != 0)
+      val eventSEL = if (eventLeq != 0)
         eventLeq + 10 * Math.log10(hourData.activity)
       else
         0
 
       val backLeq = 10 * Math.log10(Math.pow(10, totalLeq / 10) - Math.pow(10, eventLeq / 10))
 
-      val totalLdn = if (hour.getHourOfDay <= 7 || hour.getHourOfDay >= 22)
+      val totalLdn = if (totalLeq != 0 && (hour.getHourOfDay < 7 || hour.getHourOfDay >= 22))
         totalLeq + 10
       else
         totalLeq
 
-      val eventLdn = if (hour.getHourOfDay <= 7 || hour.getHourOfDay >= 22)
+      val eventLdn = if (eventLeq != 0 && (hour.getHourOfDay < 7 || hour.getHourOfDay >= 22))
         eventLeq + 10
       else
         eventLeq
 
-      val backLdn = if (hour.getHourOfDay <= 7 || hour.getHourOfDay >= 22)
+      val backLdn = if (backLeq != 0 && (hour.getHourOfDay < 7 || hour.getHourOfDay >= 22))
         backLeq + 10
       else
         backLeq
@@ -311,7 +337,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     val totalLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLeq / 10) * 3600).sum / (3600 * hourCount))
     val eventLeq = {
       val eventLeqList = verifiedHrList.map(_.eventLeq)
-      if(eventLeqList.forall(_ == 0))
+      if (eventLeqList.forall(_ == 0))
         0
       else
         10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLeq / 10) * 3600).sum / (3600 * hourCount))
@@ -322,7 +348,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     val backLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.backLeq / 10) * 3600).sum / (3600 * hourCount))
     val eventSEL = {
       val eventSelList = verifiedHrList.map(_.eventSEL)
-      if(eventSelList.forall(_ == 0))
+      if (eventSelList.forall(_ == 0))
         0
       else
         10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventSEL / 10)).sum)
@@ -344,6 +370,82 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
       val logs = Seq(LogEntry(mntNum, thisDay, AuditLog.DataTypeNoiseDay, msg1),
         LogEntry(mntNum, thisDay, AuditLog.DataTypeNoiseDay, msg2))
       auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum), logs)
+    }
+  }
+
+  def checkPeriodData(begin:DateTime, dataType:String, dataReport: Seq[NoiseRecord], verifiedHourMap: Map[DateTime, VerifiedHourRecord]) {
+    if (dataReport.isEmpty) {
+      val msg = s"缺少$dataType"
+      auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum),
+        Seq(LogEntry(mntNum, begin, dataType, msg)))
+    } else {
+      val dataReportMap: Predef.Map[Date, NoiseRecord] = dataReport.map(r=>r._id.time -> r).toMap
+
+      for (data <- dataReport) {
+        val start = new DateTime(data._id.time)
+        val step = dataType match {
+          case AuditLog.DataTypeNoiseMonth =>
+            1
+          case AuditLog.DataTypeNoiseQuarter =>
+            3
+          case AuditLog.DataTypeNoiseYear =>
+            12
+        }
+        val end = start.plusMonths(step)
+        val iterator = getMonthIterator(start, end, step)
+        val msg1Header = "原始資料: "
+        val msg2Header = "稽核資料: "
+        var msg1 = msg1Header
+        var msg2 = msg2Header
+
+        def logIfWrong(v: Double, auditV: Double, error: Double, msgTag: String) = {
+          if (v >= auditV + error || v < auditV - error) {
+            msg1 = msg1 + msgTag.format(v)
+            msg2 = msg2 + msgTag.format(auditV)
+          }
+        }
+
+        val verifiedHrList: List[VerifiedHourRecord] = verifiedHourMap.filter(
+          p => p._1 >= start && p._1 < end).values.toList
+        val hourCount = verifiedHrList.size
+        val totalLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLeq / 10) * 3600).sum / (3600 * hourCount))
+        val eventLeq = {
+          val eventLeqList = verifiedHrList.map(_.eventLeq)
+          if (eventLeqList.forall(_ == 0))
+            0
+          else
+            10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLeq / 10) * 3600).sum / (3600 * hourCount))
+        }
+        val totalLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.totalLdn / 10) * 3600).sum / (3600 * hourCount))
+        val eventLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventLdn / 10) * 3600).sum / (3600 * hourCount))
+        val backLdn = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.backLdn / 10) * 3600).sum / (3600 * hourCount))
+        val backLeq = 10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.backLeq / 10) * 3600).sum / (3600 * hourCount))
+        val eventSEL = {
+          val eventSelList = verifiedHrList.map(_.eventSEL)
+          if (eventSelList.forall(_ == 0))
+            0
+          else
+            10 * Math.log10(verifiedHrList.map(h => Math.pow(10, h.eventSEL / 10)).sum)
+        }
+        val numEvent = verifiedHrList.map(_.numEvent).sum
+        val duration = verifiedHrList.map(_.duration).sum
+
+        logIfWrong(data.backLdn, backLdn, reportTolerance.backLdn, "BACK_Ldn=%.1f ")
+        logIfWrong(data.backLeq, backLeq, reportTolerance.backLeq, "BACK_Leq=%.1f ")
+        logIfWrong(data.eventLeq, eventLeq, reportTolerance.eventLeq, "EVENT_Leq=%.1f ")
+        logIfWrong(data.eventLdn, eventLdn, reportTolerance.eventLdn, "EVENT_Ldn=%.1f ")
+        logIfWrong(data.totalLdn, totalLdn, reportTolerance.totalLdn, "TOTAL_Ldn=%.1f ")
+        logIfWrong(data.numEvent, numEvent, reportTolerance.numOfEvent, "NUM_OF_EVENT=%.0f ")
+        logIfWrong(data.totalLeq, totalLeq, reportTolerance.totalLeq, "TOTAL_Leq=%.1f ")
+        logIfWrong(data.totalEvent, eventSEL, reportTolerance.totalEventSel, "TOTAL_EVENT_SEL=%.1f ")
+        logIfWrong(data.duration, duration, reportTolerance.duration, "DURATION=%.0f")
+
+        if (msg1 != msg1Header) {
+          val logs = Seq(LogEntry(mntNum, start, AuditLog.DataTypeNoiseDay, msg1),
+            LogEntry(mntNum, start, AuditLog.DataTypeNoiseDay, msg2))
+          auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum), logs)
+        }
+      }
     }
   }
 
@@ -427,6 +529,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
       for (data <- f)
         self ! AuditNoiseDayData(day, data)
 
+
     case AuditNoiseDayData(thisDay, data) =>
       Future {
         blocking {
@@ -441,6 +544,26 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
           if (thisDay.plusDays(1) >= end) {
             reportInfoOp.removeSubTask(reportInfo._id, taskName)
             context.parent ! NoiseSecAuditComplete
+          }
+        }
+      }
+    case GetNoiseMonthData(start) =>
+      val filter = Filters.and(equal("_id.terminalID", mntNum),
+        gte("_id.time", start.toDate), lt("_id.time", start.plusMonths(1).toDate()))
+      val f = reportRecordOp.getNoiseCollection(ReportRecord.Month).find(filter).toFuture()
+      f onFailure errorHandler
+      for (data <- f)
+        self ! AuditNoiseMonthData(start, data)
+
+    case AuditNoiseMonthData(start, data) =>
+      Future {
+        blocking {
+          try {
+            //checkDayData(thisDay, data, verifiedHourMap)
+            reportInfoOp.incSubTaskCurrentCount(reportInfo._id, taskName)
+          } catch {
+            case ex: Throwable =>
+              Logger.error(s"failed to audit day data", ex)
           }
         }
       }
