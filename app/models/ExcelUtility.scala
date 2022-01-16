@@ -78,7 +78,7 @@ class ExcelUtility @Inject()
         val row = sheet.createRow(4 + idx)
         var cell = row.createCell(0)
         val dt = new DateTime(log.time)
-        cell.setCellValue(dt.toString("YYYY/MM/dd HH:mm"))
+        cell.setCellValue(dt.toString("YYYY/MM/dd HH:mm:ss"))
         cell = row.createCell(1)
         cell.setCellValue(log.msg)
       }

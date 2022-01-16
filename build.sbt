@@ -1,6 +1,6 @@
 name := """NoiseAuditor"""
 
-version := "1.2.2"
+version := "1.2.3"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala, LauncherJarPlugin)
 
