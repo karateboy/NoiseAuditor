@@ -186,7 +186,7 @@ class ReportImporter(dataFile: File, airportInfoOp: AirportInfoOp,
       Files.list(Paths.get(mainFolder, relativePath)).iterator().asScala.toList
     } catch {
       case ex: NoSuchFileException =>
-        Logger.error("s\"$mainFolder\\\\$relativePath no such files")
+        Logger.error(s"$mainFolder\\$relativePath no such files")
         List.empty[Path]
     }
     val ret = paths.filter(!Files.isDirectory(_)).filter(p => p.toFile.getAbsolutePath.endsWith("dbf"))

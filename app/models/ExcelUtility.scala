@@ -48,7 +48,7 @@ class ExcelUtility @Inject()
     def fillSecAuditReport(): Unit ={
       val sheet = wb.getSheetAt(0)
       // Just take first 500
-      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseSec).take(500).sortBy(f=>f.time)
+      val logs = auditLog.logs.filter(p=>p.dataType == AuditLog.DataTypeNoiseSec).sortBy(f=>f.time)
       sheet.getRow(0).getCell(0)
         .setCellValue(s"稽核資料：${terminalMap(mntNum)}每秒噪音監測資料")
 

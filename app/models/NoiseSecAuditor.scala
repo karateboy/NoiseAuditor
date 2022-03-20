@@ -182,7 +182,10 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
     auditLogOp.appendLog(AuditLogID(reportInfo._id, mntNum), logList)
   }
 
-  def checkHourData(day: DateTime, hourMap: Map[Date, NoiseRecord], dayMinMap: Map[Date, MinRecord], eventMap: Map[Date, EventRecord]) = {
+  def checkHourData(day: DateTime,
+                    hourMap: Map[Date, NoiseRecord],
+                    dayMinMap: Map[Date, MinRecord],
+                    eventMap: Map[Date, EventRecord]) = {
     val dayHours = getHourIterator(day, day.plusDays(1))
 
     def verifyHour(hour: DateTime, hourData: NoiseRecord): Option[VerifiedHourRecord] = {
@@ -190,6 +193,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
       val msg2Header = "稽核資料: "
       var msg1 = msg1Header
       var msg2 = msg2Header
+      var noError = true
 
       val events: List[EventRecord] = eventMap.values.filter(evt => {
         val dt = new DateTime(evt._id.time)
@@ -200,6 +204,7 @@ class NoiseSecAuditor(reportInfo: ReportInfo, reportInfoOp: ReportInfoOp, report
         if (v >= auditV + error || v < auditV - error) {
           msg1 = msg1 + msgTag.format(v)
           msg2 = msg2 + msgTag.format(auditV)
+          noError = false
         }
       }
 
